@@ -32,6 +32,8 @@ export function injectStyles() {
         border-radius: 16px; color: var(--op-text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
         font-size: 14px; width: 340px; box-shadow: 0 10px 24px rgba(16,24,40,0.12), 0 2px 6px rgba(16,24,40,0.08); user-select: none;
       }
+	  
+	  #op-list-wrap { flex: 1; display: flex; height: 80%; }
 
       .op-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--op-border); border-radius: 16px 16px 0 0; cursor: grab; }
       .op-header:active { cursor: grabbing; }
@@ -42,6 +44,7 @@ export function injectStyles() {
 
       .op-content { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
       .op-section { display: flex; flex-direction: column; gap: 8px; background: var(--op-subtle); border: 1px solid var(--op-border); border-radius: 12px; padding: 5px; }
+	  .op-section.resizable { display: flex; flex-direction: column; height: 300px; resize: vertical; overflow: hidden }
 
       .op-section-title { display: flex; align-items: center; justify-content: space-between; }
       .op-title-text { font-weight: 600; }
@@ -63,7 +66,7 @@ export function injectStyles() {
       .op-input, .op-select { background: var(--op-bg); border: 1px solid var(--op-border); color: var(--op-text); border-radius: 10px; padding: 6px 8px; }
       .op-slider { width: 100%; }
 
-      .op-list { display: flex; flex-direction: column; gap: 6px; max-height: 140px; overflow: auto; border: 1px solid var(--op-border); padding: 6px; border-radius: 10px; background: var(--op-bg); }
+      .op-list { display: flex; flex-direction: column; gap: 6px; height: 100%; overflow: auto; border: 1px solid var(--op-border); padding: 6px; border-radius: 10px; background: var(--op-bg); }
 
       .op-item { display: flex; align-items: center; gap: 6px; padding: 6px; border-radius: 8px; border: 1px solid var(--op-border); background: var(--op-subtle); }
       .op-item.active { outline: 2px solid color-mix(in oklab, var(--op-accent) 35%, transparent); background: var(--op-bg); }
