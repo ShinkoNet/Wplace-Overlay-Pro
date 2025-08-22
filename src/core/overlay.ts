@@ -43,9 +43,9 @@ function findClosestColorIndex(r: number, g: number, b: number) {
   for (let i = 0; i < ALL_COLORS.length; i++) {
     const color = ALL_COLORS[i];
     const distance = Math.sqrt(
-      Math.pow(r - color[0], 2) +
-      Math.pow(g - color[1], 2) +
-      Math.pow(b - color[2], 2)
+      (r - color[0]) ** 2 +
+      (g - color[1]) ** 2 +
+      (b - color[2]) ** 2
     );
     if (distance < minDistance) {
       minDistance = distance;
@@ -147,7 +147,7 @@ export function overlaySignature(ov: {
   offsetY: number,
   opacity: number,
 }, isPalettePerfect?: boolean) {
-  const imgKey = ov.imageBase64 ? ov.imageBase64.slice(0, 64) + ':' + ov.imageBase64.length : 'none';
+  const imgKey = ov.imageBase64 ? `${ov.imageBase64.slice(0, 64)}:${ov.imageBase64.length}` : 'none';
   const perfectFlag = isPalettePerfect !== undefined ? (isPalettePerfect ? 'P' : 'I') : 'U';
   return [imgKey, ov.pixelUrl || 'null', ov.offsetX, ov.offsetY, ov.opacity, perfectFlag].join('|');
 }
