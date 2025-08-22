@@ -1,6 +1,5 @@
 /// <reference types="tampermonkey" />
 import { WPLACE_FREE, WPLACE_PAID, WPLACE_NAMES, DEFAULT_FREE_KEYS } from '../core/palette';
-import { createCanvas } from '../core/canvas';
 import { config, saveConfig } from '../core/store';
 import { MAX_OVERLAY_DIM } from '../core/constants';
 import { ensureHook } from '../core/hook';
@@ -107,7 +106,8 @@ export function buildCCModal() {
   document.body.appendChild(modal);
 
   const previewCanvas = modal.querySelector('#op-cc-preview') as HTMLCanvasElement;
-  const previewCtx = previewCanvas.getContext('2d', { willReadFrequently: true })!;
+  const previewCtx = previewCanvas.getContext('2d', { willReadFrequently: true });
+  if (!previewCtx) return;
 
   cc = {
     backdrop,
@@ -142,49 +142,55 @@ export function buildCCModal() {
     isStale: false
   };
 
-  modal.querySelector('#op-cc-close')!.addEventListener('click', closeCCModal);
+  const closeBtn = modal.querySelector('#op-cc-close') as HTMLButtonElement | null;
+  closeBtn?.addEventListener('click', closeCCModal);
   backdrop.addEventListener('click', closeCCModal);
-  modal.querySelector('#op-cc-cancel')!.addEventListener('click', closeCCModal);
+  const cancelBtn = modal.querySelector('#op-cc-cancel') as HTMLButtonElement | null;
+  cancelBtn?.addEventListener('click', closeCCModal);
 
   const zoomIn = async () => {
-    cc!.zoom = Math.min(8, (cc!.zoom || 1) * 1.25);
-    config.ccZoom = cc!.zoom; await saveConfig(['ccZoom']);
+    if (!cc) return;
+    cc.zoom = Math.min(8, (cc.zoom || 1) * 1.25);
+    config.ccZoom = cc.zoom; await saveConfig(['ccZoom']);
     applyPreview(); updateMeta();
   };
   const zoomOut = async () => {
-    cc!.zoom = Math.max(0.1, (cc!.zoom || 1) / 1.25);
-    config.ccZoom = cc!.zoom; await saveConfig(['ccZoom']);
+    if (!cc) return;
+    cc.zoom = Math.max(0.1, (cc.zoom || 1) / 1.25);
+    config.ccZoom = cc.zoom; await saveConfig(['ccZoom']);
     applyPreview(); updateMeta();
   };
-  modal.querySelector('#op-cc-zoom-in')!.addEventListener('click', zoomIn);
-  modal.querySelector('#op-cc-zoom-out')!.addEventListener('click', zoomOut);
+  (modal.querySelector('#op-cc-zoom-in') as HTMLButtonElement | null)?.addEventListener('click', zoomIn);
+  (modal.querySelector('#op-cc-zoom-out') as HTMLButtonElement | null)?.addEventListener('click', zoomOut);
 
-  cc.realtimeBtn.addEventListener('click', async () => {
-    cc!.realtime = !cc!.realtime;
-    cc!.realtimeBtn.textContent = `Realtime: ${cc!.realtime ? 'ON' : 'OFF'}`;
-    cc!.realtimeBtn.classList.toggle('op-danger', cc!.realtime);
-    config.ccRealtime = cc!.realtime; await saveConfig(['ccRealtime']);
-    if (cc!.realtime && cc!.isStale) recalcNow();
+  cc.realtimeBtn?.addEventListener('click', async () => {
+    if (!cc) return;
+    cc.realtime = !cc.realtime;
+    cc.realtimeBtn.textContent = `Realtime: ${cc.realtime ? 'ON' : 'OFF'}`;
+    cc.realtimeBtn.classList.toggle('op-danger', cc.realtime);
+    config.ccRealtime = cc.realtime; await saveConfig(['ccRealtime']);
+    if (cc.realtime && cc.isStale) recalcNow();
   });
 
-  cc.recalcBtn.addEventListener('click', () => { recalcNow(); });
+  cc.recalcBtn?.addEventListener('click', () => { recalcNow(); });
 
-  cc.applyBtn.addEventListener('click', async () => {
-    const ov = cc!.overlay; if (!ov || !cc!.processedCanvas) return;
-    if (cc!.processedCanvas.width >= MAX_OVERLAY_DIM || cc!.processedCanvas.height >= MAX_OVERLAY_DIM) {
+  cc.applyBtn?.addEventListener('click', async () => {
+    if (!cc) return;
+    const ov = cc.overlay; if (!ov || !cc.processedCanvas) return;
+    if (cc.processedCanvas.width >= MAX_OVERLAY_DIM || cc.processedCanvas.height >= MAX_OVERLAY_DIM) {
       showToast(`Image too large to apply (must be < ${MAX_OVERLAY_DIM}×${MAX_OVERLAY_DIM}).`);
       return;
     }
-    const dataUrl = cc!.processedCanvas.toDataURL('image/png');
+    const dataUrl = cc.processedCanvas.toDataURL('image/png');
     ov.imageBase64 = dataUrl; ov.imageUrl = null; ov.isLocal = true;
-    
+
     // Mark the processed image as palette-perfect for optimization
     paletteDetectionCache.set(dataUrl, true);
-    
+
     await saveConfig(['overlays']); clearOverlayCache(); ensureHook();
     emitOverlayChanged();
-    const uniqueColors = Object.keys(cc!.lastColorCounts).length;
-    showToast(`Overlay updated (${cc!.processedCanvas.width}×${cc!.processedCanvas.height}, ${uniqueColors} colors).`);
+    const uniqueColors = Object.keys(cc.lastColorCounts).length;
+    showToast(`Overlay updated (${cc.processedCanvas.width}×${cc.processedCanvas.height}, ${uniqueColors} colors).`);
     closeCCModal();
   });
 
@@ -204,22 +210,31 @@ export function openCCModal(overlay: any) {
 
   const img = new Image();
   img.onload = () => {
-    if (!cc!.sourceCanvas) { cc!.sourceCanvas = document.createElement('canvas'); cc!.sourceCtx = cc!.sourceCanvas.getContext('2d', { willReadFrequently: true })!; }
-    cc!.sourceCanvas.width = img.width; cc!.sourceCanvas.height = img.height;
-    cc!.sourceCtx!.clearRect(0,0,img.width,img.height);
-    cc!.sourceCtx!.drawImage(img, 0, 0);
+    if (!cc) return;
 
-    cc!.sourceImageData = cc!.sourceCtx!.getImageData(0,0,img.width,img.height);
+    if (!cc.sourceCanvas) {
+      cc.sourceCanvas = document.createElement('canvas');
+      cc.sourceCtx = cc.sourceCanvas.getContext('2d', { willReadFrequently: true }) || null;
+    }
+    if (!cc.sourceCanvas) return;
 
-    if (!cc!.processedCanvas) { cc!.processedCanvas = document.createElement('canvas'); cc!.processedCtx = cc!.processedCanvas.getContext('2d')!; }
+    cc.sourceCanvas.width = img.width; cc.sourceCanvas.height = img.height;
+    cc.sourceCtx?.clearRect(0, 0, img.width, img.height);
+    cc.sourceCtx?.drawImage(img, 0, 0);
+    cc.sourceImageData = cc.sourceCtx ? cc.sourceCtx.getImageData(0, 0, img.width, img.height) : null;
+
+    if (!cc.processedCanvas) {
+      cc.processedCanvas = document.createElement('canvas');
+      cc.processedCtx = cc.processedCanvas.getContext('2d') || null;
+    }
 
     processImage();
-    cc!.isStale = false;
+    cc.isStale = false;
     applyPreview();
     updateMeta();
 
-    cc!.backdrop.classList.add('show');
-    cc!.modal.style.display = 'flex';
+    cc.backdrop.classList.add('show');
+    cc.modal.style.display = 'flex';
   };
   img.src = overlay.imageBase64;
 }
@@ -240,20 +255,20 @@ function weightedNearest(r: number, g: number, b: number, palette: number[][]) {
     const rdiff = pr - r;
     const gdiff = pg - g;
     const bdiff = pb - b;
-    const x = (512 + rmean) * rdiff * rdiff >> 8;
+    const x = ((512 + rmean) * rdiff * rdiff) >> 8;
     const y = 4 * gdiff * gdiff;
-    const z = (767 - rmean) * bdiff * bdiff >> 8;
+    const z = ((767 - rmean) * bdiff * bdiff) >> 8;
     const dist = Math.sqrt(x + y + z);
     if (dist < bestDist) { bestDist = dist; best = [pr, pg, pb]; }
   }
-  return best || [0,0,0];
+  return best || [0, 0, 0];
 }
 
 function getActivePalette(): number[][] {
   if (!cc) return [];
   const arr: number[][] = [];
-  cc.selectedFree.forEach(k => { const [r,g,b] = k.split(',').map(n => parseInt(n,10)); if (Number.isFinite(r)) arr.push([r,g,b]); });
-  cc.selectedPaid.forEach(k => { const [r,g,b] = k.split(',').map(n => parseInt(n,10)); if (Number.isFinite(r)) arr.push([r,g,b]); });
+  cc.selectedFree.forEach(k => { const [r, g, b] = k.split(',').map(n => parseInt(n, 10)); if (Number.isFinite(r)) arr.push([r, g, b]); });
+  cc.selectedPaid.forEach(k => { const [r, g, b] = k.split(',').map(n => parseInt(n, 10)); if (Number.isFinite(r)) arr.push([r, g, b]); });
   return arr;
 }
 
@@ -268,19 +283,24 @@ function processImage() {
   const counts: Record<string, number> = {};
 
   for (let i = 0; i < src.length; i += 4) {
-    const r = src[i], g = src[i+1], b = src[i+2], a = src[i+3];
-    if (a === 0) { out[i]=0; out[i+1]=0; out[i+2]=0; out[i+3]=0; continue; }
-    const [nr, ng, nb] = palette.length ? weightedNearest(r,g,b,palette) : [r,g,b];
-    out[i]=nr; out[i+1]=ng; out[i+2]=nb; out[i+3]=255;
+    const r = src[i], g = src[i + 1], b = src[i + 2], a = src[i + 3];
+    if (a === 0) { out[i] = 0; out[i + 1] = 0; out[i + 2] = 0; out[i + 3] = 0; continue; }
+    const [nr, ng, nb] = palette.length ? weightedNearest(r, g, b, palette) : [r, g, b];
+    out[i] = nr; out[i + 1] = ng; out[i + 2] = nb; out[i + 3] = 255;
     const key = `${nr},${ng},${nb}`;
     counts[key] = (counts[key] || 0) + 1;
   }
 
-  if (!cc.processedCanvas) { cc.processedCanvas = document.createElement('canvas'); cc.processedCtx = cc.processedCanvas.getContext('2d')!; }
+  if (!cc.processedCanvas) {
+    cc.processedCanvas = document.createElement('canvas');
+    cc.processedCtx = cc.processedCanvas.getContext('2d') || null;
+  }
+  if (!cc.processedCanvas) return;
+
   cc.processedCanvas.width = w; cc.processedCanvas.height = h;
 
   const outImg = new ImageData(out, w, h);
-  cc.processedCtx!.putImageData(outImg, 0, 0);
+  cc.processedCtx?.putImageData(outImg, 0, 0);
   cc.lastColorCounts = counts;
 }
 
@@ -296,16 +316,16 @@ function applyPreview() {
   cc.previewCanvas.height = ph;
 
   const ctx = cc.previewCtx;
-  ctx.clearRect(0,0,pw,ph);
-  ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(srcCanvas, 0,0, srcCanvas.width, srcCanvas.height, 0,0, pw, ph);
-  ctx.imageSmoothingEnabled = true;
+  ctx.clearRect(0, 0, pw, ph);
+  (ctx as any).imageSmoothingEnabled = false;
+  ctx.drawImage(srcCanvas, 0, 0, srcCanvas.width, srcCanvas.height, 0, 0, pw, ph);
+  (ctx as any).imageSmoothingEnabled = true;
 }
 
 function updateMeta() {
   if (!cc || !cc.sourceImageData) { if (cc) cc.meta.textContent = ''; return; }
   const w = cc.sourceImageData.width, h = cc.sourceImageData.height;
-  const colorsUsed = Object.keys(cc.lastColorCounts||{}).length;
+  const colorsUsed = Object.keys(cc.lastColorCounts || {}).length;
   const status = cc.isStale ? 'pending recalculation' : 'up to date';
   cc.meta.textContent = `Size: ${w}×${h} | Zoom: ${cc.zoom.toFixed(2)}× | Colors: ${colorsUsed} | Status: ${status}`;
 }
@@ -315,92 +335,105 @@ function renderPaletteGrid() {
   cc.freeGrid.innerHTML = '';
   cc.paidGrid.innerHTML = '';
 
-  for (const [r,g,b] of WPLACE_FREE) {
+  for (const [r, g, b] of WPLACE_FREE) {
     const key = `${r},${g},${b}`;
     const cell = document.createElement('div');
     cell.className = 'op-cc-cell';
     cell.style.background = `rgb(${r},${g},${b})`;
     cell.title = WPLACE_NAMES[key] || key;
-    cell.dataset.key = key;
-    cell.dataset.type = 'free';
+    (cell as any).dataset.key = key;
+    (cell as any).dataset.type = 'free';
     if (cc.selectedFree.has(key)) cell.classList.add('active');
     cell.addEventListener('click', async () => {
-      if (cc!.selectedFree.has(key)) cc!.selectedFree.delete(key); else cc!.selectedFree.add(key);
-      cell.classList.toggle('active', cc!.selectedFree.has(key));
-      config.ccFreeKeys = Array.from(cc!.selectedFree); await saveConfig(['ccFreeKeys']);
-      if (cc!.realtime) processImage(); else { cc!.isStale = true; }
+      if (!cc) return;
+      if (cc.selectedFree.has(key)) cc.selectedFree.delete(key); else cc.selectedFree.add(key);
+      cell.classList.toggle('active', cc.selectedFree.has(key));
+      config.ccFreeKeys = Array.from(cc.selectedFree); await saveConfig(['ccFreeKeys']);
+      if (cc.realtime) processImage(); else { cc.isStale = true; }
       applyPreview(); updateMeta(); updateMasterButtons();
     });
     cc.freeGrid.appendChild(cell);
   }
 
-  for (const [r,g,b] of WPLACE_PAID) {
+  for (const [r, g, b] of WPLACE_PAID) {
     const key = `${r},${g},${b}`;
     const cell = document.createElement('div');
     cell.className = 'op-cc-cell';
     cell.style.background = `rgb(${r},${g},${b})`;
     cell.title = WPLACE_NAMES[key] || key;
-    cell.dataset.key = key;
-    cell.dataset.type = 'paid';
+    (cell as any).dataset.key = key;
+    (cell as any).dataset.type = 'paid';
     if (cc.selectedPaid.has(key)) cell.classList.add('active');
     cell.addEventListener('click', async () => {
-      if (cc!.selectedPaid.has(key)) cc!.selectedPaid.delete(key); else cc!.selectedPaid.add(key);
-      cell.classList.toggle('active', cc!.selectedPaid.has(key));
-      config.ccPaidKeys = Array.from(cc!.selectedPaid); await saveConfig(['ccPaidKeys']);
-      if (cc!.realtime) processImage(); else { cc!.isStale = true; }
+      if (!cc) return;
+      if (cc.selectedPaid.has(key)) cc.selectedPaid.delete(key); else cc.selectedPaid.add(key);
+      cell.classList.toggle('active', cc.selectedPaid.has(key));
+      config.ccPaidKeys = Array.from(cc.selectedPaid); await saveConfig(['ccPaidKeys']);
+      if (cc.realtime) processImage(); else { cc.isStale = true; }
       applyPreview(); updateMeta(); updateMasterButtons();
     });
     cc.paidGrid.appendChild(cell);
   }
 
   cc.freeToggle.addEventListener('click', async () => {
+    if (!cc) return;
     const allActive = isAllFreeActive();
     setAllActive('free', !allActive);
-    config.ccFreeKeys = Array.from(cc!.selectedFree);
+    config.ccFreeKeys = Array.from(cc.selectedFree);
     await saveConfig(['ccFreeKeys']);
-    if (cc!.realtime) recalcNow(); else markStale();
+    if (cc.realtime) recalcNow(); else markStale();
     applyPreview(); updateMeta(); updateMasterButtons();
   });
   cc.paidToggle.addEventListener('click', async () => {
+    if (!cc) return;
     const allActive = isAllPaidActive();
     setAllActive('paid', !allActive);
-    config.ccPaidKeys = Array.from(cc!.selectedPaid);
+    config.ccPaidKeys = Array.from(cc.selectedPaid);
     await saveConfig(['ccPaidKeys']);
-    if (cc!.realtime) recalcNow(); else markStale();
+    if (cc.realtime) recalcNow(); else markStale();
     applyPreview(); updateMeta(); updateMasterButtons();
   });
 
   updateMasterButtons();
 }
 
-function isAllFreeActive() { return DEFAULT_FREE_KEYS.every(k => cc!.selectedFree.has(k)); }
-function isAllPaidActive() {
-  const allPaidKeys = WPLACE_PAID.map(([r,g,b]) => `${r},${g},${b}`);
-  return allPaidKeys.every(k => cc!.selectedPaid.has(k)) && allPaidKeys.length > 0;
+function isAllFreeActive(): boolean {
+  if (!cc) return false;
+  return DEFAULT_FREE_KEYS.every(k => cc.selectedFree.has(k));
 }
-function setAllActive(type: 'free'|'paid', active: boolean) {
+function isAllPaidActive(): boolean {
+  if (!cc) return false;
+  const allPaidKeys = WPLACE_PAID.map(([r, g, b]) => `${r},${g},${b}`);
+  return allPaidKeys.every(k => cc.selectedPaid.has(k)) && allPaidKeys.length > 0;
+}
+function setAllActive(type: 'free' | 'paid', active: boolean) {
+  if (!cc) return;
   if (type === 'free') {
     const keys = DEFAULT_FREE_KEYS;
-    if (active) keys.forEach(k => cc!.selectedFree.add(k)); else cc!.selectedFree.clear();
-    cc!.freeGrid.querySelectorAll('.op-cc-cell').forEach(cell => cell.classList.toggle('active', active));
+    if (active) keys.forEach(k => cc.selectedFree.add(k)); else cc.selectedFree.clear();
+    cc.freeGrid.querySelectorAll('.op-cc-cell').forEach(cell => cell.classList.toggle('active', active));
   } else {
-    const keys = WPLACE_PAID.map(([r,g,b]) => `${r},${g},${b}`);
-    if (active) keys.forEach(k => cc!.selectedPaid.add(k)); else cc!.selectedPaid.clear();
-    cc!.paidGrid.querySelectorAll('.op-cc-cell').forEach(cell => cell.classList.toggle('active', active));
+    const keys = WPLACE_PAID.map(([r, g, b]) => `${r},${g},${b}`);
+    if (active) keys.forEach(k => cc.selectedPaid.add(k)); else cc.selectedPaid.clear();
+    cc.paidGrid.querySelectorAll('.op-cc-cell').forEach(cell => cell.classList.toggle('active', active));
   }
 }
 function updateMasterButtons() {
-  cc!.freeToggle.textContent = isAllFreeActive() ? 'Unselect All' : 'Select All';
-  cc!.paidToggle.textContent = isAllPaidActive() ? 'Unselect All' : 'Select All';
+  if (!cc) return;
+  cc.freeToggle.textContent = isAllFreeActive() ? 'Unselect All' : 'Select All';
+  cc.paidToggle.textContent = isAllPaidActive() ? 'Unselect All' : 'Select All';
 }
 
 function recalcNow() {
+  if (!cc) return;
   processImage();
-  cc!.isStale = false;
+  cc.isStale = false;
   applyPreview();
   updateMeta();
 }
 function markStale() {
-  cc!.isStale = true;
-  cc!.meta.textContent = cc!.meta.textContent.replace(/ \| Status: .+$/, '') + ' | Status: pending recalculation';
+  if (!cc) return;
+  cc.isStale = true;
+  const base = (cc.meta.textContent || '').replace(/ \| Status: .+$/, '');
+  cc.meta.textContent = `${base} | Status: pending recalculation`;
 }
