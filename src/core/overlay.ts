@@ -105,7 +105,8 @@ function isPalettePerfectImage(img: HTMLImageElement): boolean {
   if (cached !== undefined) return cached;
 
   const canvas = createCanvas(img.width, img.height) as any;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('Failed to get 2D context');
   ctx.drawImage(img, 0, 0);
   const imageData = ctx.getImageData(0, 0, img.width, img.height);
   const data = imageData.data;
@@ -195,7 +196,8 @@ export async function buildOverlayDataForChunkUnified(
     if (isect.w === 0 || isect.h === 0) { overlayCache.set(cacheKey, null); return null; }
 
     const canvas = createCanvas(TILE_SIZE, TILE_SIZE) as any;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('Failed to get 2D context');
     ctx.drawImage(img as any, drawX, drawY);
 
     const imageData = ctx.getImageData(isect.x, isect.y, isect.w, isect.h);
@@ -231,31 +233,45 @@ export async function buildOverlayDataForChunkUnified(
       const isect = rectIntersect(0, 0, tileW, tileH, drawXScaled, drawYScaled, wScaled, hScaled);
       if (isect.w === 0 || isect.h === 0) { overlayCache.set(cacheKey, null); return null; }
 
-      const canvas = createCanvas(wImg, hImg) as any;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(img as any, 0, 0);
-      const originalImageData = ctx.getImageData(0, 0, wImg, hImg);
+      // Get original image data once
+      const sourceCanvas = createCanvas(wImg, hImg) as any;
+      const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
+      if (!sourceCtx) throw new Error('Failed to get 2D context');
+      sourceCtx.imageSmoothingEnabled = false;
+      sourceCtx.drawImage(img as any, 0, 0);
+      const originalImageData = sourceCtx.getImageData(0, 0, wImg, hImg);
+      const srcData = originalImageData.data;
 
-      const outCanvas = createCanvas(tileW, tileH) as any;
-      const outCtx = outCanvas.getContext('2d', { willReadFrequently: true })!;
-      const outputImageData = outCtx.createImageData(tileW, tileH);
+      // Create output canvas for just the intersection area
+      const outCanvas = createCanvas(isect.w, isect.h) as any;
+      const outCtx = outCanvas.getContext('2d', { willReadFrequently: true });
+      if (!outCtx) throw new Error('Failed to get 2D context');
+      const outputImageData = outCtx.createImageData(isect.w, isect.h);
       const outData = outputImageData.data;
 
-      // Precompute symbol centering offsets for performance
+      // Precompute symbol centering offsets
       const centerX = (scale - SYMBOL_W) >> 1;
       const centerY = (scale - SYMBOL_H) >> 1;
       
-      for (let y = 0; y < TILE_SIZE; y++) {
-        for (let x = 0; x < TILE_SIZE; x++) {
-          const imgX = x - drawX;
-          const imgY = y - drawY;
+      // Convert intersection back to tile coordinates
+      const startTileX = Math.floor(isect.x / scale);
+      const startTileY = Math.floor(isect.y / scale);
+      const endTileX = Math.floor((isect.x + isect.w - 1) / scale);
+      const endTileY = Math.floor((isect.y + isect.h - 1) / scale);
+      
+      // Only iterate over tiles that intersect
+      for (let tileY = startTileY; tileY <= endTileY; tileY++) {
+        for (let tileX = startTileX; tileX <= endTileX; tileX++) {
+          // Convert back to original image coordinates
+          const imgX = tileX - drawX;
+          const imgY = tileY - drawY;
+          
           if (imgX >= 0 && imgX < wImg && imgY >= 0 && imgY < hImg) {
-            const idx = (imgY * wImg + imgX) * 4;
-            const r = originalImageData.data[idx];
-            const g = originalImageData.data[idx+1];
-            const b = originalImageData.data[idx+2];
-            const a = originalImageData.data[idx+3];
+            const srcIdx = (imgY * wImg + imgX) * 4;
+            const r = srcData[srcIdx];
+            const g = srcData[srcIdx + 1];
+            const b = srcData[srcIdx + 2];
+            const a = srcData[srcIdx + 3];
 
             // Early exit for transparent or deface pixels
             if (a <= 128 || (r === 0xde && g === 0xfa && b === 0xce)) continue;
@@ -273,28 +289,33 @@ export async function buildOverlayDataForChunkUnified(
 
             if (colorIndex < SYMBOL_TILES.length) {
               const symbol = SYMBOL_TILES[colorIndex];
-              const tileX = x * scale;
-              const tileY = y * scale;
               
               // Cache palette color to avoid repeated array access
               const paletteColor = ALL_COLORS[colorIndex];
-              const a_r = paletteColor[0];
-              const a_g = paletteColor[1];
-              const a_b = paletteColor[2];
+              const pR = paletteColor[0];
+              const pG = paletteColor[1];
+              const pB = paletteColor[2];
 
+              // Calculate tile position in scaled coordinates
+              const tileXScaled = tileX * scale;
+              const tileYScaled = tileY * scale;
+
+              // Draw symbol
               for (let sy = 0; sy < SYMBOL_H; sy++) {
                 for (let sx = 0; sx < SYMBOL_W; sx++) {
                   const bit_idx = sy * SYMBOL_W + sx;
                   const bit = (symbol >>> bit_idx) & 1;
+                  
                   if (bit) {
-                    const outX = tileX + sx + centerX;
-                    const outY = tileY + sy + centerY;
-                    if (outX >= 0 && outX < tileW && outY >= 0 && outY < tileH) {
-                      const outIdx = (outY * tileW + outX) * 4;
-                      outData[outIdx] = a_r;
-                      outData[outIdx+1] = a_g;
-                      outData[outIdx+2] = a_b;
-                      outData[outIdx+3] = 255;
+                    const outX = tileXScaled + sx + centerX - isect.x;
+                    const outY = tileYScaled + sy + centerY - isect.y;
+                    
+                    if (outX >= 0 && outX < isect.w && outY >= 0 && outY < isect.h) {
+                      const outIdx = (outY * isect.w + outX) * 4;
+                      outData[outIdx] = pR;
+                      outData[outIdx + 1] = pG;
+                      outData[outIdx + 2] = pB;
+                      outData[outIdx + 3] = 255;
                     }
                   }
                 }
@@ -303,12 +324,10 @@ export async function buildOverlayDataForChunkUnified(
           }
         }
       }
+      
       outCtx.putImageData(outputImageData, 0, 0);
 
-      const finalIsect = rectIntersect(0, 0, tileW, tileH, 0, 0, tileW, tileH);
-      const finalImageData = outCtx.getImageData(finalIsect.x, finalIsect.y, finalIsect.w, finalIsect.h);
-
-      const result = { imageData: finalImageData, dx: finalIsect.x, dy: finalIsect.y, scaled: true, scale };
+      const result = { imageData: outputImageData, dx: isect.x, dy: isect.y, scaled: true, scale };
       overlayCache.set(cacheKey, result);
       return result;
     } else { // 'dots'
@@ -324,7 +343,8 @@ export async function buildOverlayDataForChunkUnified(
         if (isect.w === 0 || isect.h === 0) { overlayCache.set(cacheKey, null); return null; }
 
         const canvas = createCanvas(tileW, tileH) as any;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) throw new Error('Failed to get 2D context');
         ctx.imageSmoothingEnabled = false;
         ctx.clearRect(0, 0, tileW, tileH);
         ctx.drawImage(img as any, 0, 0, wImg, hImg, drawXScaled, drawYScaled, wScaled, hScaled);
@@ -380,7 +400,8 @@ export async function composeTileUnified(
 
     if (!scaledBaseImageData) {
       const baseCanvas = createCanvas(w * scale, h * scale) as any;
-      const baseCtx = baseCanvas.getContext('2d', { willReadFrequently: true })!;
+      const baseCtx = baseCanvas.getContext('2d', { willReadFrequently: true });
+      if (!baseCtx) throw new Error('Failed to get 2D context');
       baseCtx.imageSmoothingEnabled = false;
       baseCtx.drawImage(originalImage, 0, 0, w * scale, h * scale);
       scaledBaseImageData = baseCtx.getImageData(0, 0, w * scale, h * scale);
@@ -388,7 +409,8 @@ export async function composeTileUnified(
     }
     
     const canvas = createCanvas(w * scale, h * scale) as any;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('Failed to get 2D context');
     ctx.putImageData(scaledBaseImageData, 0, 0);
 
     for (const ovd of overlayDatas) {
@@ -397,7 +419,8 @@ export async function composeTileUnified(
       const th = ovd.imageData.height;
       if (!tw || !th) continue;
       const temp = createCanvas(tw, th) as any;
-      const tctx = temp.getContext('2d', { willReadFrequently: true })!;
+      const tctx = temp.getContext('2d', { willReadFrequently: true });
+      if (!tctx) throw new Error('Failed to get 2D context');
       tctx.putImageData(ovd.imageData, 0, 0);
       ctx.drawImage(temp, ovd.dx, ovd.dy);
     }
@@ -406,13 +429,15 @@ export async function composeTileUnified(
 
   const w = originalImage.width, h = originalImage.height;
   const canvas = createCanvas(w, h) as any;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('Failed to get 2D context');
 
   if (mode === 'behind') {
     for (const ovd of overlayDatas) {
       if (!ovd) continue;
       const temp = createCanvas(ovd.imageData.width, ovd.imageData.height) as any;
-      const tctx = temp.getContext('2d', { willReadFrequently: true })!;
+      const tctx = temp.getContext('2d', { willReadFrequently: true });
+      if (!tctx) throw new Error('Failed to get 2D context');
       tctx.putImageData(ovd.imageData, 0, 0);
       ctx.drawImage(temp, ovd.dx, ovd.dy);
     }
@@ -423,7 +448,8 @@ export async function composeTileUnified(
     for (const ovd of overlayDatas) {
       if (!ovd) continue;
       const temp = createCanvas(ovd.imageData.width, ovd.imageData.height) as any;
-      const tctx = temp.getContext('2d', { willReadFrequently: true })!;
+      const tctx = temp.getContext('2d', { willReadFrequently: true });
+      if (!tctx) throw new Error('Failed to get 2D context');
       tctx.putImageData(ovd.imageData, 0, 0);
       ctx.drawImage(temp, ovd.dx, ovd.dy);
     }

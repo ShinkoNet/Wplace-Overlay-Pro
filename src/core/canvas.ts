@@ -29,7 +29,8 @@ export async function canvasToDataURLSafe(canvas: OffscreenCanvas | HTMLCanvasEl
     const bmp = (canvas as any).transferToImageBitmap?.();
     if (bmp) {
       const html = createHTMLCanvas(canvas.width, canvas.height);
-      const ctx = html.getContext('2d')!;
+      const ctx = html.getContext('2d');
+      if (!ctx) throw new Error('Failed to get 2D context');
       ctx.drawImage(bmp, 0, 0);
       return html.toDataURL('image/png');
     }

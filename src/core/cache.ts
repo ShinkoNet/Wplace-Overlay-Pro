@@ -4,8 +4,11 @@ export class LRUCache<K=any, V=any> {
   constructor(max = 400) { this.max = max; this.map = new Map(); }
   get(key: K): V | undefined {
     if (!this.map.has(key)) return undefined;
-    const val = this.map.get(key)!;
-    this.map.delete(key); this.map.set(key, val);
+    const val = this.map.get(key);
+    if (val !== undefined) {
+      this.map.delete(key);
+      this.map.set(key, val);
+    }
     return val;
   }
   set(key: K, val: V) {

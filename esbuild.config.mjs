@@ -12,7 +12,7 @@ const metaPath = resolve(__dirname, 'src', 'meta.js');
 const MetaBannerPlugin = {
   name: 'meta-banner',
   setup(build) {
-    build.onEnd(async (result) => {
+    build.onEnd(async () => {
       try {
         await mkdir(dirname(outFile), { recursive: true });
         const [meta, js] = await Promise.all([

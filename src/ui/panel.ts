@@ -12,7 +12,13 @@ import { EV_ANCHOR_SET, EV_AUTOCAP_CHANGED } from '../core/events';
 
 let panelEl: HTMLDivElement | null = null;
 
-function $(id: string) { return document.getElementById(id)!; }
+function $(id: string): HTMLElement {
+  const el = document.getElementById(id);
+  if (!el) {
+    throw new Error(`Element with id "${id}" not found.`);
+  }
+  return el;
+}
 
 export function createUI() {
   if (document.getElementById('overlay-pro-panel')) return;
@@ -23,8 +29,8 @@ export function createUI() {
 
   const panelW = 340;
   const defaultLeft = Math.max(12, window.innerWidth - panelW - 80);
-  panel.style.left = (Number.isFinite(config.panelX as any) ? (config.panelX as any) : defaultLeft) + 'px';
-  panel.style.top = (Number.isFinite(config.panelY as any) ? (config.panelY as any) : 120) + 'px';
+  panel.style.left = `${Number.isFinite(config.panelX as any) ? (config.panelX as any) : defaultLeft}px`;
+  panel.style.top = `${Number.isFinite(config.panelY as any) ? (config.panelY as any) : 120}px`;
 
   panel.innerHTML = `
       <div class="op-header" id="op-header">
@@ -55,7 +61,7 @@ export function createUI() {
             <div class="op-mode-setting" data-setting="minify">
               <div class="op-row"><label>Style</label>
                 <div class="op-row"><input type="radio" name="minify-style" value="dots" id="op-style-dots"><label for="op-style-dots">Dots</label></div>
-                <div class="op-row"><input type="radio" name="minify-style" value="symbols" id="op-style-symbols"><label for="op-style-symbols">Symbols (slow and buggy, wait 4 fix!)</label></div>
+                <div class="op-row"><input type="radio" name="minify-style" value="symbols" id="op-style-symbols"><label for="op-style-symbols">Symbols</label></div>
               </div>
             </div>
           </div>
@@ -177,7 +183,7 @@ function rebuildOverlayListUI() {
   list.innerHTML = '';
   for (const ov of config.overlays) {
     const item = document.createElement('div');
-    item.className = 'op-item' + (ov.id === config.activeOverlayId ? ' active' : '');
+    item.className = `op-item${ov.id === config.activeOverlayId ? ' active' : ''}`;
     const localTag = ov.isLocal ? ' (local)' : (!ov.imageBase64 ? ' (no image)' : '');
     item.innerHTML = `
         <input type="radio" name="op-active" ${ov.id === config.activeOverlayId ? 'checked' : ''} title="Set active"/>
@@ -221,7 +227,7 @@ async function setOverlayImageFromURL(ov: any, url: string) {
   await saveConfig(['overlays']); clearOverlayCache();
   config.autoCapturePixelUrl = true; await saveConfig(['autoCapturePixelUrl']);
   ensureHook(); updateUI();
-  showToast(`Image loaded. Placement mode ON -- click once to set anchor.`);
+  showToast('Image loaded. Placement mode ON -- click once to set anchor.');
 }
 async function setOverlayImageFromFile(ov: any, file: File) {
   if (!file || !file.type || !file.type.startsWith('image/')) { alert('Please choose an image file.'); return; }
@@ -231,20 +237,30 @@ async function setOverlayImageFromFile(ov: any, file: File) {
   await saveConfig(['overlays']); clearOverlayCache();
   config.autoCapturePixelUrl = true; await saveConfig(['autoCapturePixelUrl']);
   ensureHook(); updateUI();
-  showToast(`Local image loaded. Placement mode ON -- click once to set anchor.`);
+  showToast('Local image loaded. Placement mode ON -- click once to set anchor.');
 }
 
+type ImportedOverlay = {
+  name?: string;
+  imageUrl?: string;
+  pixelUrl?: string | null;
+  offsetX?: number;
+  offsetY?: number;
+  opacity?: number;
+};
+
 async function importOverlayFromJSON(jsonText: string) {
-  let obj; try { obj = JSON.parse(jsonText); } catch { alert('Invalid JSON'); return; }
-  const arr = Array.isArray(obj) ? obj : [obj];
+  let obj: unknown;
+  try { obj = JSON.parse(jsonText) as unknown; } catch { alert('Invalid JSON'); return; }
+  const arr: ImportedOverlay[] = Array.isArray(obj) ? (obj as ImportedOverlay[]) : [obj as ImportedOverlay];
   let imported = 0, failed = 0;
   for (const item of arr) {
-    const name = uniqueName(item.name || 'Imported Overlay', config.overlays.map(o => o.name || ''));
-    const imageUrl = item.imageUrl;
-    const pixelUrl = item.pixelUrl ?? null;
-    const offsetX = Number.isFinite(item.offsetX) ? item.offsetX : 0;
-    const offsetY = Number.isFinite(item.offsetY) ? item.offsetY : 0;
-    const opacity = Number.isFinite(item.opacity) ? item.opacity : 0.7;
+    const name = uniqueName(item?.name || 'Imported Overlay', config.overlays.map(o => o.name || ''));
+    const imageUrl = item?.imageUrl;
+    const pixelUrl = item?.pixelUrl ?? null;
+    const offsetX = Number.isFinite(item?.offsetX) ? (item?.offsetX as number) : 0;
+    const offsetY = Number.isFinite(item?.offsetY) ? (item?.offsetY as number) : 0;
+    const opacity = Number.isFinite(item?.opacity) ? (item?.opacity as number) : 0.7;
     if (!imageUrl) { failed++; continue; }
     try {
       const base64 = await urlToDataURL(imageUrl);
@@ -253,7 +269,7 @@ async function importOverlayFromJSON(jsonText: string) {
     } catch (e) { console.error('Import failed for', imageUrl, e); failed++; }
   }
   if (imported > 0) {
-    config.activeOverlayId = config.overlays[config.overlays.length - 1].id;
+    config.activeOverlayId = config.overlays[config.overlays.length - 1]?.id || null;
     await saveConfig(['overlays', 'activeOverlayId']); clearOverlayCache(); ensureHook(); updateUI();
   }
   alert(`Import finished. Imported: ${imported}${failed ? `, Failed: ${failed}` : ''}`);
@@ -268,7 +284,7 @@ function exportActiveOverlayToClipboard() {
   copyText(text).then(() => alert('Overlay JSON copied to clipboard!')).catch(() => { prompt('Copy the JSON below:', text); });
 }
 function copyText(text: string) {
-  if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
   return Promise.reject(new Error('Clipboard API not available'));
 }
 
@@ -322,7 +338,7 @@ function addEventListeners(panel: HTMLDivElement) {
   const dropzone = $('op-dropzone');
   dropzone.addEventListener('click', () => $('op-file-input').click());
   $('op-file-input').addEventListener('change', async (e: any) => {
-    const file = e.target.files && e.target.files[0]; e.target.value=''; if (!file) return;
+    const file = e.target.files?.[0]; e.target.value=''; if (!file) return;
     const ov = getActiveOverlay(); if (!ov) return;
     if (ov.imageBase64) { alert('This overlay already has an image. Create a new overlay to change the image.'); return; }
     try { await setOverlayImageFromFile(ov, file); } catch (err) { console.error(err); alert('Failed to load local image.'); }
@@ -330,7 +346,7 @@ function addEventListeners(panel: HTMLDivElement) {
   ['dragenter', 'dragover'].forEach(evt => dropzone.addEventListener(evt, (e) => { e.preventDefault(); e.stopPropagation(); dropzone.classList.add('drop-highlight'); }));
   ['dragleave', 'drop'].forEach(evt => dropzone.addEventListener(evt, (e: any) => { e.preventDefault(); e.stopPropagation(); if (evt === 'dragleave' && e.target !== dropzone) return; dropzone.classList.remove('drop-highlight'); }));
   dropzone.addEventListener('drop', async (e: any) => {
-    const dt = e.dataTransfer; if (!dt) return; const file = dt.files && dt.files[0]; if (!file) return;
+    const dt = e.dataTransfer; if (!dt) return; const file = dt.files?.[0]; if (!file) return;
     const ov = getActiveOverlay(); if (!ov) return;
     if (ov.imageBase64) { alert('This overlay already has an image. Create a new overlay to change the image.'); return; }
     try { await setOverlayImageFromFile(ov, file); } catch (err) { console.error(err); alert('Failed to load dropped image.'); }
@@ -349,7 +365,7 @@ function addEventListeners(panel: HTMLDivElement) {
   $('op-opacity-slider').addEventListener('input', (e: any) => {
     const ov = getActiveOverlay(); if (!ov) return;
     ov.opacity = parseFloat(e.target.value);
-    $('op-opacity-value').textContent = Math.round(ov.opacity * 100) + '%';
+    $('op-opacity-value').textContent = `${Math.round(ov.opacity * 100)}%`;
   });
   $('op-opacity-slider').addEventListener('change', async () => { await saveConfig(['overlays']); clearOverlayCache(); });
 
@@ -396,8 +412,8 @@ function enableDrag(panel: HTMLDivElement) {
     const dx = e.clientX - startX, dy = e.clientY - startY;
     const maxLeft = Math.max(8, window.innerWidth - panel.offsetWidth - 8);
     const maxTop  = Math.max(8, window.innerHeight - panel.offsetHeight - 8);
-    panel.style.left = clamp(startLeft + dx, 8, maxLeft) + 'px';
-    panel.style.top  = clamp(startTop  + dy, 8, maxTop)  + 'px';
+    panel.style.left = `${clamp(startLeft + dx, 8, maxLeft)}px`;
+    panel.style.top  = `${clamp(startTop + dy, 8, maxTop)}px`;
     moved = true;
   };
   const onPointerUp = (e: PointerEvent) => {
@@ -420,12 +436,12 @@ function enableDrag(panel: HTMLDivElement) {
     const maxTop  = Math.max(8, window.innerHeight - panel.offsetHeight - 8);
     const newLeft = Math.min(Math.max(rect.left, 8), maxLeft);
     const newTop  = Math.min(Math.max(rect.top, 8), maxTop);
-    panel.style.left = newLeft + 'px'; panel.style.top = newTop + 'px';
+    panel.style.left = `${newLeft}px`; panel.style.top = `${newTop}px`;
     config.panelX = newLeft; config.panelY = newTop; saveConfig(['panelX', 'panelY']);
   });
 }
 
-function updateEditorUI() {
+export function updateEditorUI(): void {
   const editorSect = $('op-editor-section');
   const editorBody = $('op-editor-body');
   const ov = getActiveOverlay();
@@ -454,12 +470,11 @@ function updateEditorUI() {
 
   const coords = ov.pixelUrl ? extractPixelCoords(ov.pixelUrl) : { chunk1: '-', chunk2: '-', posX: '-', posY: '-' } as any;
   const coordDisplay = $('op-coord-display');
-  if(coordDisplay) {
+  if (coordDisplay) {
     coordDisplay.textContent = ov.pixelUrl
       ? `Ref: chunk ${coords.chunk1}/${coords.chunk2} at (${coords.posX}, ${coords.posY})`
-      : `No pixel anchor set. Enable placement and click a pixel.`;
+      : 'No pixel anchor set. Enable placement and click a pixel.';
   }
-  
 
   const indicator = $('op-offset-indicator');
   if (indicator) indicator.textContent = `Offset X ${ov.offsetX}, Y ${ov.offsetY}`;
@@ -482,16 +497,18 @@ export function updateUI() {
   toggle.title = collapsed ? 'Expand' : 'Collapse';
 
   // --- Mode Tabs ---
-  panelEl.querySelectorAll('.op-tab-btn').forEach(btn => {
-    const mode = btn.getAttribute('data-mode');
-    let isActive = false;
-    if (mode === 'above' && (config.overlayMode === 'above' || config.overlayMode === 'behind')) {
+  if (panelEl) {
+    panelEl.querySelectorAll('.op-tab-btn').forEach(btn => {
+      const mode = btn.getAttribute('data-mode');
+      let isActive = false;
+      if (mode === 'above' && (config.overlayMode === 'above' || config.overlayMode === 'behind')) {
         isActive = true;
-    } else {
+      } else {
         isActive = mode === config.overlayMode;
-    }
-    btn.classList.toggle('active', isActive);
-  });
+      }
+      btn.classList.toggle('active', isActive);
+    });
+  }
 
   // --- Mode Settings ---
   const fullOverlaySettings = $('op-mode-settings').querySelector('[data-setting="above"]') as HTMLDivElement;
@@ -501,9 +518,9 @@ export function updateUI() {
     fullOverlaySettings.classList.add('active');
     minifySettings.classList.remove('active');
     const ov = getActiveOverlay();
-    if(ov) {
-        ( $('op-opacity-slider') as HTMLInputElement ).value = String(ov.opacity);
-        $('op-opacity-value').textContent = Math.round(ov.opacity * 100) + '%';
+    if (ov) {
+      ( $('op-opacity-slider') as HTMLInputElement ).value = String(ov.opacity);
+      $('op-opacity-value').textContent = `${Math.round(ov.opacity * 100)}%`;
     }
   } else if (config.overlayMode === 'minify') {
     fullOverlaySettings.classList.remove('active');
@@ -515,31 +532,30 @@ export function updateUI() {
 
   ($('op-style-dots') as HTMLInputElement).checked = config.minifyStyle === 'dots';
   ($('op-style-symbols') as HTMLInputElement).checked = config.minifyStyle === 'symbols';
-  
+
   const layeringBtns = $('op-layering-btns');
   layeringBtns.innerHTML = '';
   const behindBtn = document.createElement('button');
   behindBtn.textContent = 'Behind';
-  behindBtn.className = 'op-button' + (config.overlayMode === 'behind' ? ' active' : '');
+  behindBtn.className = `op-button${config.overlayMode === 'behind' ? ' active' : ''}`;
   behindBtn.addEventListener('click', () => { config.overlayMode = 'behind'; saveConfig(['overlayMode']); ensureHook(); updateUI(); });
   const aboveBtn = document.createElement('button');
   aboveBtn.textContent = 'Above';
-  aboveBtn.className = 'op-button' + (config.overlayMode === 'above' ? ' active' : '');
+  aboveBtn.className = `op-button${config.overlayMode === 'above' ? ' active' : ''}`;
   aboveBtn.addEventListener('click', () => { config.overlayMode = 'above'; saveConfig(['overlayMode']); ensureHook(); updateUI(); });
   layeringBtns.appendChild(behindBtn);
   layeringBtns.appendChild(aboveBtn);
-
 
   // --- Positioning Section ---
   const autoBtn = $('op-autocap-toggle');
   const placeLabel = $('op-place-label');
   autoBtn.textContent = config.autoCapturePixelUrl ? 'Enabled' : 'Disabled';
   autoBtn.classList.toggle('op-danger', !!config.autoCapturePixelUrl);
-  if(placeLabel) placeLabel.classList.toggle('op-danger-text', !!config.autoCapturePixelUrl);
+  placeLabel?.classList.toggle('op-danger-text', !!config.autoCapturePixelUrl);
 
-  const positioningBody = $('op-positioning-body');
+  const positioningBody: HTMLElement = $('op-positioning-body');
   const positioningCz = $('op-collapse-positioning');
-  if(positioningBody) positioningBody.style.display = config.collapsePositioning ? 'none' : 'block';
+  positioningBody.style.display = config.collapsePositioning ? 'none' : 'block';
   if (positioningCz) positioningCz.textContent = config.collapsePositioning ? '▸' : '▾';
 
   const listWrap = $('op-list-wrap');
@@ -548,11 +564,11 @@ export function updateUI() {
   if (listCz) listCz.textContent = config.collapseList ? '▸' : '▾';
 
   rebuildOverlayListUI();
-  updateEditorUI();
+  updateEditorUI(); // <- now exported, so noUnusedLocals won't flag it
 
   const exportBtn = $('op-export-overlay') as HTMLButtonElement;
   const ov = getActiveOverlay();
-  const canExport = !!(ov && ov.imageUrl && !ov.isLocal);
+  const canExport = !!(ov?.imageUrl && !ov?.isLocal);
   exportBtn.disabled = !canExport;
   exportBtn.title = canExport ? 'Export active overlay JSON' : 'Export disabled for local images';
 }

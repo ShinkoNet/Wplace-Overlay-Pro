@@ -1,6 +1,6 @@
 /// <reference types="tampermonkey" />
 import { createCanvas, createHTMLCanvas, canvasToDataURLSafe, loadImage } from '../core/canvas';
-import { config, saveConfig } from '../core/store';
+import { saveConfig } from '../core/store';
 import { MAX_OVERLAY_DIM } from '../core/constants';
 import { ensureHook } from '../core/hook';
 import { clearOverlayCache } from '../core/cache';
@@ -291,10 +291,14 @@ export function buildRSModal() {
     closeBtn: modal.querySelector('#op-rs-close') as HTMLButtonElement,
   };
 
-  const ctxPrev = refs.preview.getContext('2d', { willReadFrequently: true })!;
-  const ctxSimOrig = refs.simOrig.getContext('2d', { willReadFrequently: true })!;
-  const ctxSimNew = refs.simNew.getContext('2d', { willReadFrequently: true })!;
-  const ctxRes = refs.resCanvas.getContext('2d', { willReadFrequently: true })!;
+  const ctxPrev = refs.preview.getContext('2d', { willReadFrequently: true });
+  if (!ctxPrev) throw new Error('Failed to get 2d context for preview canvas.');
+  const ctxSimOrig = refs.simOrig.getContext('2d', { willReadFrequently: true });
+  if (!ctxSimOrig) throw new Error('Failed to get 2d context for simOrig canvas.');
+  const ctxSimNew = refs.simNew.getContext('2d', { willReadFrequently: true });
+  if (!ctxSimNew) throw new Error('Failed to get 2d context for simNew canvas.');
+  const ctxRes = refs.resCanvas.getContext('2d', { willReadFrequently: true });
+  if (!ctxRes) throw new Error('Failed to get 2d context for resCanvas.');
 
   rs = {
     ...refs,
@@ -398,8 +402,7 @@ export function buildRSModal() {
   }
 
   function syncAdvancedMeta() {
-    const { cols, rows } = sampleDims();
-    const limit = (cols >= MAX_OVERLAY_DIM || rows >= MAX_OVERLAY_DIM);
+    sampleDims();
     if (rs!.mode === 'advanced') {
       rs!.applyBtn.disabled = !rs!.calcReady;
     } else {
