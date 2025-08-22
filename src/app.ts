@@ -6,6 +6,7 @@ import { createUI, updateUI } from './ui/panel';
 import { displayImageFromData } from './core/overlay';
 import { showToast } from './core/toast';
 import { urlToDataURL } from './core/gm';
+import { enablePaletteSymbols } from './core/palette-inject';
 
 async function applyTemplateFromUrl() {
   const urlParams = new URLSearchParams(window.location.search);
@@ -64,6 +65,7 @@ export async function bootstrapApp() {
   createUI();
   setUpdateUI(() => updateUI());
   ensureHook();
+  enablePaletteSymbols();
   await applyTemplateFromUrl();
   console.log('Overlay Pro UI ready.');
 }

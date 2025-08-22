@@ -9,6 +9,7 @@ import { extractPixelCoords } from '../core/overlay';
 import { buildCCModal, openCCModal } from './ccModal';
 import { buildRSModal, openRSModal } from './rsModal';
 import { EV_ANCHOR_SET, EV_AUTOCAP_CHANGED } from '../core/events';
+import { updatePaletteSymbols } from '../core/palette-inject';
 
 let panelEl: HTMLDivElement | null = null;
 
@@ -314,14 +315,31 @@ function addEventListeners(panel: HTMLDivElement) {
         saveConfig(['overlayMode']);
         ensureHook();
         updateUI();
+        updatePaletteSymbols();
     });
   });
 
   const styleDotsEl = $('op-style-dots') as HTMLInputElement | null;
-  styleDotsEl?.addEventListener('change', () => { if (styleDotsEl.checked) { config.minifyStyle = 'dots'; saveConfig(['minifyStyle']); clearOverlayCache(); ensureHook(); } });
+  styleDotsEl?.addEventListener('change', () => { 
+    if (styleDotsEl.checked) { 
+      config.minifyStyle = 'dots'; 
+      saveConfig(['minifyStyle']); 
+      clearOverlayCache(); 
+      ensureHook();
+      updatePaletteSymbols();
+    } 
+  });
 
   const styleSymbolsEl = $('op-style-symbols') as HTMLInputElement | null;
-  styleSymbolsEl?.addEventListener('change', () => { if (styleSymbolsEl.checked) { config.minifyStyle = 'symbols'; saveConfig(['minifyStyle']); clearOverlayCache(); ensureHook(); } });
+  styleSymbolsEl?.addEventListener('change', () => { 
+    if (styleSymbolsEl.checked) { 
+      config.minifyStyle = 'symbols'; 
+      saveConfig(['minifyStyle']); 
+      clearOverlayCache(); 
+      ensureHook();
+      updatePaletteSymbols();
+    } 
+  });
 
   $('op-autocap-toggle')?.addEventListener('click', () => { config.autoCapturePixelUrl = !config.autoCapturePixelUrl; saveConfig(['autoCapturePixelUrl']); ensureHook(); updateUI(); });
 
