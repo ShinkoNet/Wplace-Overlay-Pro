@@ -32,6 +32,16 @@ export function attachHook() {
   const hookedFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const urlStr = typeof input === 'string' ? input : ((input as Request).url) || '';
 
+    // EARLY FILTERING: Quick hostname check to skip non-wplace requests
+    if (!urlStr.includes('backend.wplace.live')) {
+      return originalFetch(input as any, init as any);
+    }
+
+    // EARLY FILTERING: Quick path check to skip non-tile/non-pixel requests
+    if (!urlStr.includes('/files/') && !urlStr.includes('/s0/pixel/')) {
+      return originalFetch(input as any, init as any);
+    }
+
     // Anchor auto-capture: watch pixel endpoint, then store/normalize
     if (config.autoCapturePixelUrl && config.activeOverlayId) {
       const pixelMatch = matchPixelUrl(urlStr);

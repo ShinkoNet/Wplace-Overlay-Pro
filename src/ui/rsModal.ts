@@ -1,6 +1,6 @@
 /// <reference types="tampermonkey" />
 import { createCanvas, createHTMLCanvas, canvasToDataURLSafe, loadImage } from '../core/canvas';
-import { config, saveConfig } from '../core/store';
+import { saveConfig } from '../core/store';
 import { MAX_OVERLAY_DIM } from '../core/constants';
 import { ensureHook } from '../core/hook';
 import { clearOverlayCache } from '../core/cache';
@@ -291,10 +291,26 @@ export function buildRSModal() {
     closeBtn: modal.querySelector('#op-rs-close') as HTMLButtonElement,
   };
 
-  const ctxPrev = refs.preview.getContext('2d', { willReadFrequently: true })!;
-  const ctxSimOrig = refs.simOrig.getContext('2d', { willReadFrequently: true })!;
-  const ctxSimNew = refs.simNew.getContext('2d', { willReadFrequently: true })!;
-  const ctxRes = refs.resCanvas.getContext('2d', { willReadFrequently: true })!;
+  const ctxPrev: CanvasRenderingContext2D = (() => {
+    const ctx = refs.preview.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('Failed to get 2d context for preview canvas.');
+    return ctx;
+  })();
+  const ctxSimOrig: CanvasRenderingContext2D = (() => {
+    const ctx = refs.simOrig.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('Failed to get 2d context for simOrig canvas.');
+    return ctx;
+  })();
+  const ctxSimNew: CanvasRenderingContext2D = (() => {
+    const ctx = refs.simNew.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('Failed to get 2d context for simNew canvas.');
+    return ctx;
+  })();
+  const ctxRes: CanvasRenderingContext2D = (() => {
+    const ctx = refs.resCanvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('Failed to get 2d context for resCanvas.');
+    return ctx;
+  })();
 
   rs = {
     ...refs,
@@ -321,65 +337,70 @@ export function buildRSModal() {
     calcReady: false,
   };
 
+  const s = rs; // local non-null alias within this scope
+
   function computeSimpleFooterText() {
-    const W = parseInt(rs!.w.value||'0',10);
-    const H = parseInt(rs!.h.value||'0',10);
-    const ok = Number.isFinite(W) && Number.isFinite(H) && W>0 && H>0;
+    const W = parseInt(s.w.value || '0', 10);
+    const H = parseInt(s.h.value || '0', 10);
+    const ok = Number.isFinite(W) && Number.isFinite(H) && W > 0 && H > 0;
     const limit = (W >= MAX_OVERLAY_DIM || H >= MAX_OVERLAY_DIM);
     return ok ? (limit ? `Target: ${W}×${H} (exceeds limit: must be < ${MAX_OVERLAY_DIM}×${MAX_OVERLAY_DIM})`
                        : `Target: ${W}×${H} (OK)`)
               : 'Enter positive width and height.';
   }
   function sampleDims() {
-    const cols = Math.floor((rs!.origW - rs!.offx) / rs!.gapX);
-    const rows = Math.floor((rs!.origH - rs!.offy) / rs!.gapY);
+    const cols = Math.floor((s.origW - s.offx) / s.gapX);
+    const rows = Math.floor((s.origH - s.offy) / s.gapY);
     return { cols: Math.max(0, cols), rows: Math.max(0, rows) };
   }
   function computeAdvancedFooterText() {
     const { cols, rows } = sampleDims();
     const limit = (cols >= MAX_OVERLAY_DIM || rows >= MAX_OVERLAY_DIM);
-    return (cols>0 && rows>0)
+    return (cols > 0 && rows > 0)
       ? `Samples: ${cols} × ${rows} | Output: ${cols}×${rows}${limit ? ` (exceeds limit: < ${MAX_OVERLAY_DIM}×${MAX_OVERLAY_DIM})` : ''}`
       : 'Adjust multiplier/offset until dots sit at centers.';
   }
   const updateFooterMeta = () => {
-    rs!.meta.textContent = (rs!.mode === 'advanced') ? computeAdvancedFooterText() : computeSimpleFooterText();
+    s.meta.textContent = (s.mode === 'advanced') ? computeAdvancedFooterText() : computeSimpleFooterText();
   };
 
   function drawSimplePreview() {
-    if (!rs!.img) return;
-    const leftLabelH = rs!.colLeft.querySelector('.pad-top')!.clientHeight;
-    const rightLabelH = rs!.colRight.querySelector('.pad-top')!.clientHeight;
-    const leftW = rs!.colLeft.clientWidth;
-    const rightW = rs!.colRight.clientWidth;
-    const leftH = rs!.colLeft.clientHeight - leftLabelH;
-    const rightH = rs!.colRight.clientHeight - rightLabelH;
+    if (!s.img) return;
+    const padTopL = s.colLeft.querySelector('.pad-top') as HTMLElement | null;
+    const padTopR = s.colRight.querySelector('.pad-top') as HTMLElement | null;
+    const leftLabelH = padTopL ? padTopL.clientHeight : 0;
+    const rightLabelH = padTopR ? padTopR.clientHeight : 0;
+    const leftW = s.colLeft.clientWidth;
+    const rightW = s.colRight.clientWidth;
+    const leftH = s.colLeft.clientHeight - leftLabelH;
+    const rightH = s.colRight.clientHeight - rightLabelH;
 
-    rs!.simOrig.width = leftW; rs!.simOrig.height = leftH;
-    rs!.simNew.width  = rightW; rs!.simNew.height = rightH;
+    s.simOrig.width = leftW; s.simOrig.height = leftH;
+    s.simNew.width  = rightW; s.simNew.height = rightH;
 
     ctxSimOrig.save();
     ctxSimOrig.imageSmoothingEnabled = false;
     ctxSimOrig.clearRect(0,0,leftW,leftH);
-    const sFit = Math.min(leftW / rs!.origW, leftH / rs!.origH);
-    const dW = Math.max(1, Math.floor(rs!.origW * sFit));
-    const dH = Math.max(1, Math.floor(rs!.origH * sFit));
+    const sFit = Math.min(leftW / s.origW, leftH / s.origH);
+    const dW = Math.max(1, Math.floor(s.origW * sFit));
+    const dH = Math.max(1, Math.floor(s.origH * sFit));
     const dx0 = Math.floor((leftW - dW) / 2);
     const dy0 = Math.floor((leftH - dH) / 2);
-    ctxSimOrig.drawImage(rs!.img!, 0,0, rs!.origW,rs!.origH, dx0,dy0, dW,dH);
+    ctxSimOrig.drawImage(s.img, 0,0, s.origW,s.origH, dx0,dy0, dW,dH);
     ctxSimOrig.restore();
 
-    const W = parseInt(rs!.w.value||'0',10);
-    const H = parseInt(rs!.h.value||'0',10);
+    const W = parseInt(s.w.value || '0', 10);
+    const H = parseInt(s.h.value || '0', 10);
     ctxSimNew.save();
     ctxSimNew.imageSmoothingEnabled = false;
     ctxSimNew.clearRect(0,0,rightW,rightH);
     if (Number.isFinite(W) && Number.isFinite(H) && W>0 && H>0) {
-      const tiny = createCanvas(W, H) as any;
-      const tctx = tiny.getContext('2d', { willReadFrequently: true })!;
+      const tiny = createCanvas(W, H) as HTMLCanvasElement;
+      const tctx = tiny.getContext('2d', { willReadFrequently: true });
+      if (!tctx) throw new Error('Failed to get 2d context for tiny canvas.');
       tctx.imageSmoothingEnabled = false;
       tctx.clearRect(0,0,W,H);
-      tctx.drawImage(rs!.img!, 0,0, rs!.origW,rs!.origH, 0,0, W,H);
+      tctx.drawImage(s.img, 0,0, s.origW,s.origH, 0,0, W,H);
       const id = tctx.getImageData(0,0,W,H);
       const data = id.data;
       for (let i=0;i<data.length;i+=4) { if (data[i+3] !== 0) data[i+3]=255; }
@@ -392,64 +413,63 @@ export function buildRSModal() {
       const dy2 = Math.floor((rightH - dH2)/2);
       ctxSimNew.drawImage(tiny, 0,0, W,H, dx2,dy2, dW2,dH2);
     } else {
-      ctxSimNew.drawImage(rs!.img!, 0,0, rs!.origW,rs!.origH, dx0,dy0, dW,dH);
+      ctxSimNew.drawImage(s.img, 0,0, s.origW,s.origH, dx0,dy0, dW,dH);
     }
     ctxSimNew.restore();
   }
 
   function syncAdvancedMeta() {
-    const { cols, rows } = sampleDims();
-    const limit = (cols >= MAX_OVERLAY_DIM || rows >= MAX_OVERLAY_DIM);
-    if (rs!.mode === 'advanced') {
-      rs!.applyBtn.disabled = !rs!.calcReady;
+    sampleDims();
+    if (s.mode === 'advanced') {
+      s.applyBtn.disabled = !s.calcReady;
     } else {
-      const W = parseInt(rs!.w.value||'0',10), H = parseInt(rs!.h.value||'0',10);
+      const W = parseInt(s.w.value||'0',10), H = parseInt(s.h.value||'0',10);
       const ok = Number.isFinite(W)&&Number.isFinite(H)&&W>0&&H>0&&W<MAX_OVERLAY_DIM&&H<MAX_OVERLAY_DIM;
-      rs!.applyBtn.disabled = !ok;
+      s.applyBtn.disabled = !ok;
     }
     updateFooterMeta();
   }
   function drawAdvancedPreview() {
-    if (rs!.mode !== 'advanced' || !rs!.img) return;
-    const w = rs!.origW, h = rs!.origH;
+    if (s.mode !== 'advanced' || !s.img) return;
+    const w = s.origW, h = s.origH;
 
-    const destW = Math.max(50, Math.floor(rs!.advWrap.clientWidth));
-    const destH = Math.max(50, Math.floor(rs!.advWrap.clientHeight));
-    rs!.preview.width = destW;
-    rs!.preview.height = destH;
+    const destW = Math.max(50, Math.floor(s.advWrap.clientWidth));
+    const destH = Math.max(50, Math.floor(s.advWrap.clientHeight));
+    s.preview.width = destW;
+    s.preview.height = destH;
 
-    const sw = Math.max(1, Math.floor(destW / rs!.zoom));
-    const sh = Math.max(1, Math.floor(destH / rs!.zoom));
+    const sw = Math.max(1, Math.floor(destW / s.zoom));
+    const sh = Math.max(1, Math.floor(destH / s.zoom));
     const maxX = Math.max(0, w - sw);
     const maxY = Math.max(0, h - sh);
-    rs!.viewX = Math.min(Math.max(0, rs!.viewX), maxX);
-    rs!.viewY = Math.min(Math.max(0, rs!.viewY), maxY);
+    s.viewX = Math.min(Math.max(0, s.viewX), maxX);
+    s.viewY = Math.min(Math.max(0, s.viewY), maxY);
 
     ctxPrev.save();
     ctxPrev.imageSmoothingEnabled = false;
     ctxPrev.clearRect(0,0,destW,destH);
-    ctxPrev.drawImage(rs!.img!, rs!.viewX, rs!.viewY, sw, sh, 0, 0, destW, destH);
+    ctxPrev.drawImage(s.img, s.viewX, s.viewY, sw, sh, 0, 0, destW, destH);
 
-    if (rs!.gridToggle.checked && rs!.gapX >= 1 && rs!.gapY >= 1) {
+    if (s.gridToggle.checked && s.gapX >= 1 && s.gapY >= 1) {
       ctxPrev.strokeStyle = 'rgba(255,59,48,0.45)';
       ctxPrev.lineWidth = 1;
-      const startGX = Math.ceil((rs!.viewX - rs!.offx) / rs!.gapX);
-      const endGX   = Math.floor((rs!.viewX + sw - rs!.offx) / rs!.gapX);
-      const startGY = Math.ceil((rs!.viewY - rs!.offy) / rs!.gapY);
-      const endGY   = Math.floor((rs!.viewY + sh - rs!.offy) / rs!.gapY);
+      const startGX = Math.ceil((s.viewX - s.offx) / s.gapX);
+      const endGX   = Math.floor((s.viewX + sw - s.offx) / s.gapX);
+      const startGY = Math.ceil((s.viewY - s.offy) / s.gapY);
+      const endGY   = Math.floor((s.viewY + sh - s.offy) / s.gapY);
       const linesX = Math.max(0, endGX - startGX + 1);
       const linesY = Math.max(0, endGY - startGY + 1);
       if (linesX <= 4000 && linesY <= 4000) {
         ctxPrev.beginPath();
         for (let gx = startGX; gx <= endGX; gx++) {
-          const x = rs!.offx + gx * rs!.gapX;
-          const px = Math.round((x - rs!.viewX) * rs!.zoom);
+          const x = s.offx + gx * s.gapX;
+          const px = Math.round((x - s.viewX) * s.zoom);
           ctxPrev.moveTo(px + 0.5, 0);
           ctxPrev.lineTo(px + 0.5, destH);
         }
         for (let gy = startGY; gy <= endGY; gy++) {
-          const y = rs!.offy + gy * rs!.gapY;
-          const py = Math.round((y - rs!.viewY) * rs!.zoom);
+          const y = s.offy + gy * s.gapY;
+          const py = Math.round((y - s.viewY) * s.zoom);
           ctxPrev.moveTo(0, py + 0.5);
           ctxPrev.lineTo(destW, py + 0.5);
         }
@@ -457,26 +477,26 @@ export function buildRSModal() {
       }
     }
 
-    if (rs!.gapX >= 1 && rs!.gapY >= 1) {
+    if (s.gapX >= 1 && s.gapY >= 1) {
       ctxPrev.fillStyle = '#ff3b30';
-      const cx0 = rs!.offx + Math.floor(rs!.gapX/2);
-      const cy0 = rs!.offy + Math.floor(rs!.gapY/2);
+      const cx0 = s.offx + Math.floor(s.gapX/2);
+      const cy0 = s.offy + Math.floor(s.gapY/2);
       if (cx0 >= 0 && cy0 >= 0) {
-        const startX = Math.ceil((rs!.viewX - cx0) / rs!.gapX);
-        const startY = Math.ceil((rs!.viewY - cy0) / rs!.gapY);
-        const endY = Math.floor((rs!.viewY + sh - 1 - cy0) / rs!.gapY);
-        const endX2 = Math.floor((rs!.viewX + sw - 1 - cx0) / rs!.gapX);
-        const r = rs!.dotr;
+        const startX = Math.ceil((s.viewX - cx0) / s.gapX);
+        const startY = Math.ceil((s.viewY - cy0) / s.gapY);
+        const endY = Math.floor((s.viewY + sh - 1 - cy0) / s.gapY);
+        const endX2 = Math.floor((s.viewX + sw - 1 - cx0) / s.gapX);
+        const r = s.dotr;
         const dotsX = Math.max(0, endX2 - startX + 1);
         const dotsY = Math.max(0, endY - startY + 1);
         const maxDots = 300000;
         if (dotsX * dotsY <= maxDots) {
           for (let gy = startY; gy <= endY; gy++) {
-            const y = cy0 + gy * rs!.gapY;
+            const y = cy0 + gy * s.gapY;
             for (let gx = startX; gx <= endX2; gx++) {
-              const x = cx0 + gx * rs!.gapX;
-              const px = Math.round((x - rs!.viewX) * rs!.zoom);
-              const py = Math.round((y - rs!.viewY) * rs!.zoom);
+              const x = cx0 + gx * s.gapX;
+              const px = Math.round((x - s.viewX) * s.zoom);
+              const py = Math.round((y - s.viewY) * s.zoom);
               ctxPrev.beginPath();
               ctxPrev.arc(px, py, r, 0, Math.PI*2);
               ctxPrev.fill();
@@ -489,44 +509,44 @@ export function buildRSModal() {
   }
 
   function drawAdvancedResultPreview() {
-    const canvas = rs!.calcCanvas;
-    const wrap = rs!.resWrap;
+    const canvas = s.calcCanvas;
+    const wrap = s.resWrap;
     if (!wrap || !canvas) {
-      ctxRes.clearRect(0,0, rs!.resCanvas.width, rs!.resCanvas.height);
-      rs!.resMeta.textContent = 'No result. Click Calculate.';
+      ctxRes.clearRect(0,0, s.resCanvas.width, s.resCanvas.height);
+      s.resMeta.textContent = 'No result. Click Calculate.';
       return;
     }
     const W = canvas.width, H = canvas.height;
     const availW = Math.max(50, Math.floor(wrap.clientWidth - 16));
     const availH = Math.max(50, Math.floor(wrap.clientHeight - 16));
-    const s = Math.min(availW / W, availH / H);
-    const dW = Math.max(1, Math.floor(W * s));
-    const dH = Math.max(1, Math.floor(H * s));
-    rs!.resCanvas.width = dW;
-    rs!.resCanvas.height = dH;
+    const scale = Math.min(availW / W, availH / H);
+    const dW = Math.max(1, Math.floor(W * scale));
+    const dH = Math.max(1, Math.floor(H * scale));
+    s.resCanvas.width = dW;
+    s.resCanvas.height = dH;
     ctxRes.save();
     ctxRes.imageSmoothingEnabled = false;
     ctxRes.clearRect(0,0,dW,dH);
     ctxRes.drawImage(canvas, 0,0, W,H, 0,0, dW,dH);
     ctxRes.restore();
-    rs!.resMeta.textContent = `Output: ${W}×${H}${(W>=MAX_OVERLAY_DIM||H>=MAX_OVERLAY_DIM) ? ` (exceeds limit: < ${MAX_OVERLAY_DIM}×${MAX_OVERLAY_DIM})` : ''}`;
+    s.resMeta.textContent = `Output: ${W}×${H}${(W>=MAX_OVERLAY_DIM||H>=MAX_OVERLAY_DIM) ? ` (exceeds limit: < ${MAX_OVERLAY_DIM}×${MAX_OVERLAY_DIM})` : ''}`;
   }
 
-  rs._drawSimplePreview = drawSimplePreview;
-  rs._drawAdvancedPreview = drawAdvancedPreview;
-  rs._drawAdvancedResultPreview = drawAdvancedResultPreview;
+  s._drawSimplePreview = drawSimplePreview;
+  s._drawAdvancedPreview = drawAdvancedPreview;
+  s._drawAdvancedResultPreview = drawAdvancedResultPreview;
 
   const setMode = (m: 'simple'|'advanced') => {
-    rs!.mode = m;
-    rs!.tabSimple.classList.toggle('active', m === 'simple');
-    rs!.tabAdvanced.classList.toggle('active', m === 'advanced');
-    rs!.paneSimple.classList.toggle('show', m === 'simple');
-    rs!.paneAdvanced.classList.toggle('show', m === 'advanced');
+    s.mode = m;
+    s.tabSimple.classList.toggle('active', m === 'simple');
+    s.tabAdvanced.classList.toggle('active', m === 'advanced');
+    s.paneSimple.classList.toggle('show', m === 'simple');
+    s.paneAdvanced.classList.toggle('show', m === 'advanced');
     updateFooterMeta();
 
-    rs!.calcBtn.style.display = (m === 'advanced') ? 'inline-block' : 'none';
+    s.calcBtn.style.display = (m === 'advanced') ? 'inline-block' : 'none';
     if (m === 'advanced') {
-      rs!.applyBtn.disabled = !rs!.calcReady;
+      s.applyBtn.disabled = !s.calcReady;
     } else {
       syncSimpleNote();
     }
@@ -539,144 +559,144 @@ export function buildRSModal() {
       drawSimplePreview();
     }
   };
-  rs._setMode = (m) => {
+  s._setMode = (m) => {
     const evt = new Event('click');
-    (m === 'simple' ? rs!.tabSimple : rs!.tabAdvanced).dispatchEvent(evt);
+    (m === 'simple' ? s.tabSimple : s.tabAdvanced).dispatchEvent(evt);
   };
-  rs.tabSimple.addEventListener('click', () => setMode('simple'));
-  rs.tabAdvanced.addEventListener('click', () => setMode('advanced'));
+  s.tabSimple.addEventListener('click', () => setMode('simple'));
+  s.tabAdvanced.addEventListener('click', () => setMode('advanced'));
 
   function onWidthInput() {
-    if (rs!.updating) return;
-    rs!.updating = true;
-    const W = parseInt(rs!.w.value||'0',10);
-    if (rs!.lock.checked && rs!.origW>0 && rs!.origH>0 && W>0) {
-      rs!.h.value = String(Math.max(1, Math.round(W * rs!.origH / rs!.origW)));
+    if (s.updating) return;
+    s.updating = true;
+    const W = parseInt(s.w.value||'0',10);
+    if (s.lock.checked && s.origW>0 && s.origH>0 && W>0) {
+      s.h.value = String(Math.max(1, Math.round(W * s.origH / s.origW)));
     }
-    rs!.updating = false;
+    s.updating = false;
     syncSimpleNote();
-    if (rs!.mode === 'simple') drawSimplePreview();
+    if (s.mode === 'simple') drawSimplePreview();
   }
   function onHeightInput() {
-    if (rs!.updating) return;
-    rs!.updating = true;
-    const H = parseInt(rs!.h.value||'0',10);
-    if (rs!.lock.checked && rs!.origW>0 && rs!.origH>0 && H>0) {
-      rs!.w.value = String(Math.max(1, Math.round(H * rs!.origW / rs!.origH)));
+    if (s.updating) return;
+    s.updating = true;
+    const H = parseInt(s.h.value||'0',10);
+    if (s.lock.checked && s.origW>0 && s.origH>0 && H>0) {
+      s.w.value = String(Math.max(1, Math.round(H * s.origW / s.origH)));
     }
-    rs!.updating = false;
+    s.updating = false;
     syncSimpleNote();
-    if (rs!.mode === 'simple') drawSimplePreview();
+    if (s.mode === 'simple') drawSimplePreview();
   }
-  rs.w.addEventListener('input', onWidthInput);
-  rs.h.addEventListener('input', onHeightInput);
-  rs.onex.addEventListener('click', () => { applyScaleToFields(1); drawSimplePreview(); });
-  rs.half.addEventListener('click', () => { applyScaleToFields(0.5); drawSimplePreview(); });
-  rs.third.addEventListener('click', () => { applyScaleToFields(1/3); drawSimplePreview(); });
-  rs.quarter.addEventListener('click', () => { applyScaleToFields(1/4); drawSimplePreview(); });
-  rs.double.addEventListener('click', () => { applyScaleToFields(2); drawSimplePreview(); });
-  rs.applyScale.addEventListener('click', () => {
-    const s = parseFloat(rs!.scale.value||'');
-    if (!Number.isFinite(s) || s<=0) { showToast('Enter a valid scale factor > 0'); return; }
-    applyScaleToFields(s);
+  s.w.addEventListener('input', onWidthInput);
+  s.h.addEventListener('input', onHeightInput);
+  s.onex.addEventListener('click', () => { applyScaleToFields(1); drawSimplePreview(); });
+  s.half.addEventListener('click', () => { applyScaleToFields(0.5); drawSimplePreview(); });
+  s.third.addEventListener('click', () => { applyScaleToFields(1/3); drawSimplePreview(); });
+  s.quarter.addEventListener('click', () => { applyScaleToFields(1/4); drawSimplePreview(); });
+  s.double.addEventListener('click', () => { applyScaleToFields(2); drawSimplePreview(); });
+  s.applyScale.addEventListener('click', () => {
+    const scaleVal = parseFloat(s.scale.value||'');
+    if (!Number.isFinite(scaleVal) || scaleVal<=0) { showToast('Enter a valid scale factor > 0'); return; }
+    applyScaleToFields(scaleVal);
     drawSimplePreview();
   });
 
   const markCalcStale = () => {
-    if (rs!.mode === 'advanced') {
-      rs!.calcReady = false;
-      rs!.applyBtn.disabled = true;
+    if (s.mode === 'advanced') {
+      s.calcReady = false;
+      s.applyBtn.disabled = true;
       drawAdvancedResultPreview();
       updateFooterMeta();
     }
   };
 
   const onMultChange = (v: string) => {
-    if (rs!.updating) return;
+    if (s.updating) return;
     const parsed = parseFloat(v);
     if (!Number.isFinite(parsed)) return;
     const clamped = Math.min(Math.max(parsed, 1), 128);
-    rs!.mult = clamped;
-    if (rs!.bind.checked) { rs!.gapX = clamped; rs!.gapY = clamped; }
+    s.mult = clamped;
+    if (s.bind.checked) { s.gapX = clamped; s.gapY = clamped; }
     syncAdvFieldsToState();
     syncAdvancedMeta();
     drawAdvancedPreview();
     markCalcStale();
   };
-  rs.multRange.addEventListener('input', (e) => onMultChange((e.target as HTMLInputElement).value));
-  rs.multInput.addEventListener('input', (e) => {
+  s.multRange.addEventListener('input', (e) => onMultChange((e.target as HTMLInputElement).value));
+  s.multInput.addEventListener('input', (e) => {
     const v = (e.target as HTMLInputElement).value;
     if (!Number.isFinite(parseFloat(v))) return;
     onMultChange(v);
   });
-  rs.bind.addEventListener('change', () => {
-    if (rs!.bind.checked) { rs!.gapX = rs!.mult; rs!.gapY = rs!.mult; syncAdvFieldsToState(); }
+  s.bind.addEventListener('change', () => {
+    if (s.bind.checked) { s.gapX = s.mult; s.gapY = s.mult; syncAdvFieldsToState(); }
     syncAdvancedMeta();
     drawAdvancedPreview();
     markCalcStale();
   });
-  rs.blockW.addEventListener('input', (e) => {
+  s.blockW.addEventListener('input', (e) => {
     const val = parseFloat((e.target as HTMLInputElement).value);
     if (!Number.isFinite(val)) return;
-    rs!.gapX = Math.min(Math.max(val, 1), 4096);
-    if (rs!.bind.checked) { rs!.mult = rs!.gapX; rs!.gapY = rs!.gapX; }
+    s.gapX = Math.min(Math.max(val, 1), 4096);
+    if (s.bind.checked) { s.mult = s.gapX; s.gapY = s.gapX; }
     syncAdvFieldsToState();
     syncAdvancedMeta();
     drawAdvancedPreview();
     markCalcStale();
   });
-  rs.blockH.addEventListener('input', (e) => {
+  s.blockH.addEventListener('input', (e) => {
     const val = parseFloat((e.target as HTMLInputElement).value);
     if (!Number.isFinite(val)) return;
-    rs!.gapY = Math.min(Math.max(val, 1), 4096);
-    if (rs!.bind.checked) { rs!.mult = rs!.gapY; rs!.gapX = rs!.gapY; }
+    s.gapY = Math.min(Math.max(val, 1), 4096);
+    if (s.bind.checked) { s.mult = s.gapY; s.gapX = s.gapY; }
     syncAdvFieldsToState();
     syncAdvancedMeta();
     drawAdvancedPreview();
     markCalcStale();
   });
-  rs.offX.addEventListener('input', (e) => {
+  s.offX.addEventListener('input', (e) => {
     const val = parseFloat((e.target as HTMLInputElement).value);
     if (!Number.isFinite(val)) return;
-    rs!.offx = Math.min(Math.max(val, 0), Math.max(0, rs!.origH-0.0001));
-    rs!.viewX = Math.min(rs!.viewX, Math.max(0, rs!.origW - 1));
+    s.offx = Math.min(Math.max(val, 0), Math.max(0, s.origH-0.0001));
+    s.viewX = Math.min(s.viewX, Math.max(0, s.origW - 1));
     syncAdvancedMeta();
     drawAdvancedPreview();
     markCalcStale();
   });
-  rs.offY.addEventListener('input', (e) => {
+  s.offY.addEventListener('input', (e) => {
     const val = parseFloat((e.target as HTMLInputElement).value);
     if (!Number.isFinite(val)) return;
-    rs!.offy = Math.min(Math.max(val, 0), Math.max(0, rs!.origH-0.0001));
-    rs!.viewY = Math.min(rs!.viewY, Math.max(0, rs!.origH - 1));
+    s.offy = Math.min(Math.max(val, 0), Math.max(0, s.origH-0.0001));
+    s.viewY = Math.min(s.viewY, Math.max(0, s.origH - 1));
     syncAdvancedMeta();
     drawAdvancedPreview();
     markCalcStale();
   });
-  rs.dotR.addEventListener('input', (e) => {
-    rs!.dotr = Math.max(1, Math.round(Number((e.target as HTMLInputElement).value)||1));
-    rs!.dotRVal.textContent = String(rs!.dotr);
+  s.dotR.addEventListener('input', (e) => {
+    s.dotr = Math.max(1, Math.round(Number((e.target as HTMLInputElement).value)||1));
+    s.dotRVal.textContent = String(s.dotr);
     drawAdvancedPreview();
   });
-  rs.gridToggle.addEventListener('change', drawAdvancedPreview);
+  s.gridToggle.addEventListener('change', drawAdvancedPreview);
 
   function applyZoom(factor: number) {
-    const destW = Math.max(50, Math.floor(rs!.advWrap.clientWidth));
-    const destH = Math.max(50, Math.floor(rs!.advWrap.clientHeight));
-    const sw = Math.max(1, Math.floor(destW / rs!.zoom));
-    const sh = Math.max(1, Math.floor(destH / rs!.zoom));
-    const cx = rs!.viewX + sw / 2;
-    const cy = rs!.viewY + sh / 2;
-    rs!.zoom = Math.min(32, Math.max(0.1, rs!.zoom * factor));
-    const sw2 = Math.max(1, Math.floor(destW / rs!.zoom));
-    const sh2 = Math.max(1, Math.floor(destH / rs!.zoom));
-    rs!.viewX = Math.min(Math.max(0, Math.round(cx - sw2 / 2)), Math.max(0, rs!.origW - sw2));
-    rs!.viewY = Math.min(Math.max(0, Math.round(cy - sh2 / 2)), Math.max(0, rs!.origH - sh2));
+    const destW = Math.max(50, Math.floor(s.advWrap.clientWidth));
+    const destH = Math.max(50, Math.floor(s.advWrap.clientHeight));
+    const sw = Math.max(1, Math.floor(destW / s.zoom));
+    const sh = Math.max(1, Math.floor(destH / s.zoom));
+    const cx = s.viewX + sw / 2;
+    const cy = s.viewY + sh / 2;
+    s.zoom = Math.min(32, Math.max(0.1, s.zoom * factor));
+    const sw2 = Math.max(1, Math.floor(destW / s.zoom));
+    const sh2 = Math.max(1, Math.floor(destH / s.zoom));
+    s.viewX = Math.min(Math.max(0, Math.round(cx - sw2 / 2)), Math.max(0, s.origW - sw2));
+    s.viewY = Math.min(Math.max(0, Math.round(cy - sh2 / 2)), Math.max(0, s.origH - sh2));
     drawAdvancedPreview();
   }
-  rs.zoomIn.addEventListener('click', () => applyZoom(1.25));
-  rs.zoomOut.addEventListener('click', () => applyZoom(1/1.25));
-  rs.advWrap.addEventListener('wheel', (e) => {
+  s.zoomIn.addEventListener('click', () => applyZoom(1.25));
+  s.zoomOut.addEventListener('click', () => applyZoom(1/1.25));
+  s.advWrap.addEventListener('wheel', (e) => {
     if (!(e as WheelEvent).ctrlKey) return;
     e.preventDefault();
     const delta = (e as WheelEvent).deltaY || 0;
@@ -685,59 +705,59 @@ export function buildRSModal() {
 
   const onPanDown = (e: PointerEvent) => {
     if ((e.target as HTMLElement).closest('.op-rs-zoom')) return;
-    rs!.panning = true;
-    rs!.panStart = { x: e.clientX, y: e.clientY, viewX: rs!.viewX, viewY: rs!.viewY };
-    rs!.advWrap.classList.remove('op-pan-grab');
-    rs!.advWrap.classList.add('op-pan-grabbing');
-    (rs!.advWrap as any).setPointerCapture?.(e.pointerId);
+    s.panning = true;
+    s.panStart = { x: e.clientX, y: e.clientY, viewX: s.viewX, viewY: s.viewY };
+    s.advWrap.classList.remove('op-pan-grab');
+    s.advWrap.classList.add('op-pan-grabbing');
+    (s.advWrap as any).setPointerCapture?.(e.pointerId);
   };
   const onPanMove = (e: PointerEvent) => {
-    if (!rs!.panning) return;
-    const dx = e.clientX - rs!.panStart!.x;
-    const dy = e.clientY - rs!.panStart!.y;
-    const wrapW = rs!.advWrap.clientWidth;
-    const wrapH = rs!.advWrap.clientHeight;
-    const sw = Math.max(1, Math.floor(wrapW / rs!.zoom));
-    const sh = Math.max(1, Math.floor(wrapH / rs!.zoom));
-    let nx = rs!.panStart!.viewX - Math.round(dx / rs!.zoom);
-    let ny = rs!.panStart!.viewY - Math.round(dy / rs!.zoom);
-    nx = Math.min(Math.max(0, nx), Math.max(0, rs!.origW - sw));
-    ny = Math.min(Math.max(0, ny), Math.max(0, rs!.origH - sh));
-    rs!.viewX = nx;
-    rs!.viewY = ny;
+    if (!s.panning || !s.panStart) return;
+    const dx = e.clientX - s.panStart.x;
+    const dy = e.clientY - s.panStart.y;
+    const wrapW = s.advWrap.clientWidth;
+    const wrapH = s.advWrap.clientHeight;
+    const sw = Math.max(1, Math.floor(wrapW / s.zoom));
+    const sh = Math.max(1, Math.floor(wrapH / s.zoom));
+    let nx = s.panStart.viewX - Math.round(dx / s.zoom);
+    let ny = s.panStart.viewY - Math.round(dy / s.zoom);
+    nx = Math.min(Math.max(0, nx), Math.max(0, s.origW - sw));
+    ny = Math.min(Math.max(0, ny), Math.max(0, s.origH - sh));
+    s.viewX = nx;
+    s.viewY = ny;
     drawAdvancedPreview();
   };
   const onPanUp = (e: PointerEvent) => {
-    if (!rs!.panning) return;
-    rs!.panning = false;
-    rs!.panStart = null;
-    rs!.advWrap.classList.remove('op-pan-grabbing');
-    rs!.advWrap.classList.add('op-pan-grab');
-    (rs!.advWrap as any).releasePointerCapture?.(e.pointerId);
+    if (!s.panning) return;
+    s.panning = false;
+    s.panStart = null;
+    s.advWrap.classList.remove('op-pan-grabbing');
+    s.advWrap.classList.add('op-pan-grab');
+    (s.advWrap as any).releasePointerCapture?.(e.pointerId);
   };
-  rs.advWrap.addEventListener('pointerdown', onPanDown);
-  rs.advWrap.addEventListener('pointermove', onPanMove);
-  rs.advWrap.addEventListener('pointerup', onPanUp);
-  rs.advWrap.addEventListener('pointercancel', onPanUp);
-  rs.advWrap.addEventListener('pointerleave', onPanUp);
+  s.advWrap.addEventListener('pointerdown', onPanDown);
+  s.advWrap.addEventListener('pointermove', onPanMove);
+  s.advWrap.addEventListener('pointerup', onPanUp);
+  s.advWrap.addEventListener('pointercancel', onPanUp);
+  s.advWrap.addEventListener('pointerleave', onPanUp);
 
   const close = () => closeRSModal();
-  rs.cancelBtn.addEventListener('click', close);
-  rs.closeBtn.addEventListener('click', close);
+  s.cancelBtn.addEventListener('click', close);
+  s.closeBtn.addEventListener('click', close);
   backdrop.addEventListener('click', close);
 
-  rs.calcBtn.addEventListener('click', async () => {
-    if (rs!.mode !== 'advanced' || !rs!.img) return;
+  s.calcBtn.addEventListener('click', async () => {
+    if (s.mode !== 'advanced' || !s.img) return;
     try {
       const { cols, rows } = sampleDims();
       if (cols<=0 || rows<=0) { showToast('No samples. Adjust multiplier/offset.'); return; }
       if (cols >= MAX_OVERLAY_DIM || rows >= MAX_OVERLAY_DIM) { showToast(`Output too large. Must be < ${MAX_OVERLAY_DIM}×${MAX_OVERLAY_DIM}.`); return; }
-      const canvas = await reconstructViaGrid(rs!.img, rs!.origW, rs!.origH, rs!.offx, rs!.offy, rs!.gapX, rs!.gapY);
-      rs!.calcCanvas = canvas;
-      rs!.calcCols = cols;
-      rs!.calcRows = rows;
-      rs!.calcReady = true;
-      rs!.applyBtn.disabled = false;
+      const canvas = await reconstructViaGrid(s.img, s.origW, s.origH, s.offx, s.offy, s.gapX, s.gapY);
+      s.calcCanvas = canvas;
+      s.calcCols = cols;
+      s.calcRows = rows;
+      s.calcReady = true;
+      s.applyBtn.disabled = false;
       drawAdvancedResultPreview();
       updateFooterMeta();
       showToast(`Calculated ${cols}×${rows}. Review preview, then Apply.`);
@@ -747,29 +767,29 @@ export function buildRSModal() {
     }
   });
 
-  rs.applyBtn.addEventListener('click', async () => {
-    if (!rs!.ov) return;
+  s.applyBtn.addEventListener('click', async () => {
+    if (!s.ov) return;
     try {
-      if (rs!.mode === 'simple') {
-        const W = parseInt(rs!.w.value||'0',10);
-        const H = parseInt(rs!.h.value||'0',10);
+      if (s.mode === 'simple') {
+        const W = parseInt(s.w.value||'0',10);
+        const H = parseInt(s.h.value||'0',10);
         if (!Number.isFinite(W) || !Number.isFinite(H) || W<=0 || H<=0) { showToast('Invalid dimensions'); return; }
         if (W >= MAX_OVERLAY_DIM || H >= MAX_OVERLAY_DIM) { showToast(`Too large. Must be < ${MAX_OVERLAY_DIM}×${MAX_OVERLAY_DIM}.`); return; }
-        await resizeOverlayImage(rs!.ov, W, H);
+        await resizeOverlayImage(s.ov, W, H);
         closeRSModal();
         showToast(`Resized to ${W}×${H}.`);
       } else {
-        if (!rs!.calcReady || !rs!.calcCanvas) { showToast('Calculate first.'); return; }
-        const dataUrl = await canvasToDataURLSafe(rs!.calcCanvas);
-        rs!.ov.imageBase64 = dataUrl;
-        rs!.ov.imageUrl = null;
-        rs!.ov.isLocal = true;
+        if (!s.calcReady || !s.calcCanvas) { showToast('Calculate first.'); return; }
+        const dataUrl = await canvasToDataURLSafe(s.calcCanvas);
+        s.ov.imageBase64 = dataUrl;
+        s.ov.imageUrl = null;
+        s.ov.isLocal = true;
         await saveConfig(['overlays']);
         clearOverlayCache();
         ensureHook();
         emitOverlayChanged();
         closeRSModal();
-        showToast(`Applied ${rs!.calcCols}×${rs!.calcRows}.`);
+        showToast(`Applied ${s.calcCols}×${s.calcRows}.`);
       }
     } catch (e) {
       console.error(e);
@@ -778,51 +798,52 @@ export function buildRSModal() {
   });
 
   function syncSimpleNote() {
-    const W = parseInt(rs!.w.value||'0',10);
-    const H = parseInt(rs!.h.value||'0',10);
+    const W = parseInt(s.w.value||'0',10);
+    const H = parseInt(s.h.value||'0',10);
     const ok = Number.isFinite(W) && Number.isFinite(H) && W>0 && H>0;
     const limit = (W >= MAX_OVERLAY_DIM || H >= MAX_OVERLAY_DIM);
     const simpleText = ok
       ? (limit ? `Target: ${W}×${H} (exceeds limit: must be < ${MAX_OVERLAY_DIM}×${MAX_OVERLAY_DIM})`
                : `Target: ${W}×${H} (OK)`)
       : 'Enter positive width and height.';
-    if (rs!.note) rs!.note.textContent = simpleText;
-    if (rs!.mode === 'simple') rs!.applyBtn.disabled = (!ok || limit);
-    if (rs!.mode === 'simple') rs!.meta.textContent = simpleText;
+    if (s.note) s.note.textContent = simpleText;
+    if (s.mode === 'simple') s.applyBtn.disabled = (!ok || limit);
+    if (s.mode === 'simple') s.meta.textContent = simpleText;
   }
   function applyScaleToFields(scale: number) {
-    const W = Math.max(1, Math.round(rs!.origW * scale));
-    const H = Math.max(1, Math.round(rs!.origH * scale));
-    rs!.updating = true;
-    rs!.w.value = String(W);
-    rs!.h.value = rs!.lock.checked ? String(Math.max(1, Math.round(W * rs!.origH / rs!.origW))) : String(H);
-    rs!.updating = false;
+    const W = Math.max(1, Math.round(s.origW * scale));
+    const H = Math.max(1, Math.round(s.origH * scale));
+    s.updating = true;
+    s.w.value = String(W);
+    s.h.value = s.lock.checked ? String(Math.max(1, Math.round(W * s.origH / s.origW))) : String(H);
+    s.updating = false;
     syncSimpleNote();
   }
   function syncAdvFieldsToState() {
-    rs!.updating = true;
-    rs!.multRange.value = String(rs!.mult);
-    rs!.multInput.value = String(rs!.mult);
-    rs!.blockW.value = String(rs!.gapX);
-    rs!.blockH.value = String(rs!.gapY);
-    rs!.offX.value = String(rs!.offx);
-    rs!.offY.value = String(rs!.offy);
-    rs!.dotR.value = String(rs!.dotr);
-    rs!.dotRVal.textContent = String(rs!.dotr);
-    rs!.updating = false;
+    s.updating = true;
+    s.multRange.value = String(s.mult);
+    s.multInput.value = String(s.mult);
+    s.blockW.value = String(s.gapX);
+    s.blockH.value = String(s.gapY);
+    s.offX.value = String(s.offx);
+    s.offY.value = String(s.offy);
+    s.dotR.value = String(s.dotr);
+    s.dotRVal.textContent = String(s.dotr);
+    s.updating = false;
   }
 
-  rs._syncAdvancedMeta = syncAdvancedMeta;
-  rs._syncSimpleNote = syncSimpleNote;
+  s._syncAdvancedMeta = syncAdvancedMeta;
+  s._syncSimpleNote = syncSimpleNote;
 
-  rs._resizeHandler = () => {
-    if (rs!.mode === 'simple') rs!._drawSimplePreview?.();
+  s._resizeHandler = () => {
+    if (!rs) return;
+    if (rs.mode === 'simple') rs._drawSimplePreview?.();
     else {
-      rs!._drawAdvancedPreview?.();
-      rs!._drawAdvancedResultPreview?.();
+      rs._drawAdvancedPreview?.();
+      rs._drawAdvancedResultPreview?.();
     }
   };
-  window.addEventListener('resize', rs._resizeHandler);
+  window.addEventListener('resize', s._resizeHandler);
 }
 
 export function openRSModal(overlay: any) {
@@ -831,60 +852,64 @@ export function openRSModal(overlay: any) {
 
   const img = new Image();
   img.onload = () => {
-    rs!.img = img;
-    rs!.origW = img.width; rs!.origH = img.height;
+    const s = rs;
+    if (!s) return;
 
-    rs!.orig.value = `${rs!.origW}×${rs!.origH}`;
-    rs!.w.value = String(rs!.origW);
-    rs!.h.value = String(rs!.origH);
-    rs!.lock.checked = true;
+    s.img = img;
+    s.origW = img.width; s.origH = img.height;
 
-    rs!.zoom = 1.0;
-    rs!.mult = 4;
-    rs!.gapX = 4; rs!.gapY = 4;
-    rs!.offx = 0; rs!.offy = 0;
-    rs!.dotr = 1;
-    rs!.viewX = 0; rs!.viewY = 0;
+    s.orig.value = `${s.origW}×${s.origH}`;
+    s.w.value = String(s.origW);
+    s.h.value = String(s.origH);
+    s.lock.checked = true;
 
-    rs!.bind.checked = true;
-    rs!.multRange.value = '4';
-    rs!.multInput.value = '4';
-    rs!.blockW.value = '4';
-    rs!.blockH.value = '4';
-    rs!.offX.value = '0';
-    rs!.offY.value = '0';
-    rs!.dotR.value = '1';
-    rs!.dotRVal.textContent = '1';
-    rs!.gridToggle.checked = true;
+    s.zoom = 1.0;
+    s.mult = 4;
+    s.gapX = 4; s.gapY = 4;
+    s.offx = 0; s.offy = 0;
+    s.dotr = 1;
+    s.viewX = 0; s.viewY = 0;
 
-    rs!.calcCanvas = null;
-    rs!.calcCols = 0;
-    rs!.calcRows = 0;
-    rs!.calcReady = false;
-    rs!.applyBtn.disabled = (rs!.mode === 'advanced');
+    s.bind.checked = true;
+    s.multRange.value = '4';
+    s.multInput.value = '4';
+    s.blockW.value = '4';
+    s.blockH.value = '4';
+    s.offX.value = '0';
+    s.offY.value = '0';
+    s.dotR.value = '1';
+    s.dotRVal.textContent = '1';
+    s.gridToggle.checked = true;
 
-    rs!._setMode!('simple');
+    s.calcCanvas = null;
+    s.calcCols = 0;
+    s.calcRows = 0;
+    s.calcReady = false;
+    s.applyBtn.disabled = (s.mode === 'advanced');
+
+    if (s._setMode) s._setMode('simple');
 
     document.body.classList.add('op-scroll-lock');
-    rs!.backdrop.classList.add('show');
-    rs!.modal.style.display = 'flex';
+    s.backdrop.classList.add('show');
+    s.modal.style.display = 'flex';
 
-    rs!._drawSimplePreview?.();
-    rs!._drawAdvancedPreview?.();
-    rs!._drawAdvancedResultPreview?.();
-    rs!._syncAdvancedMeta?.();
-    rs!._syncSimpleNote?.();
+    s._drawSimplePreview?.();
+    s._drawAdvancedPreview?.();
+    s._drawAdvancedResultPreview?.();
+    s._syncAdvancedMeta?.();
+    s._syncSimpleNote?.();
 
     const setFooterNow = () => {
-      if (rs!.mode === 'advanced') {
-        const cols = Math.floor((rs!.origW - rs!.offx) / rs!.gapX);
-        const rows = Math.floor((rs!.origH - rs!.offy) / rs!.gapY);
-        rs!.meta.textContent = (cols>0&&rows>0) ? `Samples: ${cols} × ${rows} | Output: ${cols}×${rows}${(cols>=MAX_OVERLAY_DIM||rows>=MAX_OVERLAY_DIM)?` (exceeds limit: < ${MAX_OVERLAY_DIM}×${MAX_OVERLAY_DIM})`:''}` : 'Adjust multiplier/offset until dots sit at centers.';
+      if (!rs) return;
+      if (rs.mode === 'advanced') {
+        const cols = Math.floor((rs.origW - rs.offx) / rs.gapX);
+        const rows = Math.floor((rs.origH - rs.offy) / rs.gapY);
+        rs.meta.textContent = (cols>0&&rows>0) ? `Samples: ${cols} × ${rows} | Output: ${cols}×${rows}${(cols>=MAX_OVERLAY_DIM||rows>=MAX_OVERLAY_DIM)?` (exceeds limit: < ${MAX_OVERLAY_DIM}×${MAX_OVERLAY_DIM})`:''}` : 'Adjust multiplier/offset until dots sit at centers.';
       } else {
-        const W = parseInt(rs!.w.value||'0',10); const H = parseInt(rs!.h.value||'0',10);
+        const W = parseInt(rs.w.value||'0',10); const H = parseInt(rs.h.value||'0',10);
         const ok = Number.isFinite(W)&&Number.isFinite(H)&&W>0&&H>0;
         const limit = (W>=MAX_OVERLAY_DIM||H>=MAX_OVERLAY_DIM);
-        rs!.meta.textContent = ok ? (limit ? `Target: ${W}×${H} (exceeds limit: must be < ${MAX_OVERLAY_DIM}×${MAX_OVERLAY_DIM})` : `Target: ${W}×${H} (OK)`) : 'Enter positive width and height.';
+        rs.meta.textContent = ok ? (limit ? `Target: ${W}×${H} (exceeds limit: must be < ${MAX_OVERLAY_DIM}×${MAX_OVERLAY_DIM})` : `Target: ${W}×${H} (OK)`) : 'Enter positive width and height.';
       }
     };
     setFooterNow();
@@ -903,8 +928,9 @@ function closeRSModal() {
 }
 
 async function reconstructViaGrid(img: HTMLImageElement, origW: number, origH: number, offx: number, offy: number, gapX: number, gapY: number) {
-  const srcCanvas = createCanvas(origW, origH) as any;
-  const sctx = srcCanvas.getContext('2d', { willReadFrequently: true })!;
+  const srcCanvas = createCanvas(origW, origH) as HTMLCanvasElement;
+  const sctx = srcCanvas.getContext('2d', { willReadFrequently: true });
+  if (!sctx) throw new Error('Failed to get 2d context for srcCanvas.');
   sctx.imageSmoothingEnabled = false;
   sctx.drawImage(img, 0, 0);
   const srcData = sctx.getImageData(0,0,origW,origH).data;
@@ -914,7 +940,8 @@ async function reconstructViaGrid(img: HTMLImageElement, origW: number, origH: n
   if (cols <= 0 || rows <= 0) throw new Error('No samples available with current offset/gap');
 
   const outCanvas = createHTMLCanvas(cols, rows);
-  const octx = outCanvas.getContext('2d')!;
+  const octx = outCanvas.getContext('2d');
+  if (!octx) throw new Error('Failed to get 2d context for outCanvas.');
   const out = octx.createImageData(cols, rows);
   const odata = out.data;
 
@@ -948,7 +975,8 @@ async function reconstructViaGrid(img: HTMLImageElement, origW: number, origH: n
 async function resizeOverlayImage(ov: any, targetW: number, targetH: number) {
   const img = await loadImage(ov.imageBase64);
   const canvas = createHTMLCanvas(targetW, targetH);
-  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('Failed to get 2d context for resize canvas.');
   ctx.imageSmoothingEnabled = false;
   ctx.clearRect(0,0,targetW,targetH);
   ctx.drawImage(img, 0,0, img.width,img.height, 0,0, targetW,targetH);

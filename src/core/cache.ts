@@ -4,8 +4,11 @@ export class LRUCache<K=any, V=any> {
   constructor(max = 400) { this.max = max; this.map = new Map(); }
   get(key: K): V | undefined {
     if (!this.map.has(key)) return undefined;
-    const val = this.map.get(key)!;
-    this.map.delete(key); this.map.set(key, val);
+    const val = this.map.get(key);
+    if (val !== undefined) {
+      this.map.delete(key);
+      this.map.set(key, val);
+    }
     return val;
   }
   set(key: K, val: V) {
@@ -25,11 +28,13 @@ export const imageDecodeCache = new LRUCache<string, HTMLImageElement>(64);
 export const paletteDetectionCache = new LRUCache<string, boolean>(200);
 export const baseMinifyCache = new LRUCache<string, ImageData>(100);
 export const tooLargeOverlays = new Set<string>();
+export const overlayImageDataCache = new LRUCache<string, ImageData>(100);
 
 export function clearOverlayCache() {
   overlayCache.clear();
   imageDecodeCache.clear();
   paletteDetectionCache.clear();
   baseMinifyCache.clear();
+  overlayImageDataCache.clear();
   tooLargeOverlays.clear();
 }
