@@ -28,11 +28,13 @@ export const imageDecodeCache = new LRUCache<string, HTMLImageElement>(64);
 export const paletteDetectionCache = new LRUCache<string, boolean>(200);
 export const baseMinifyCache = new LRUCache<string, ImageData>(100);
 export const tooLargeOverlays = new Set<string>();
+export const overlayImageDataCache = new LRUCache<string, ImageData>(100);
 
 export function clearOverlayCache() {
   overlayCache.clear();
   imageDecodeCache.clear();
   paletteDetectionCache.clear();
   baseMinifyCache.clear();
+  overlayImageDataCache.clear();
   tooLargeOverlays.clear();
 }

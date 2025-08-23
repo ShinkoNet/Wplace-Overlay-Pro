@@ -1,6 +1,6 @@
 import { createCanvas, canvasToBlob, blobToImage, loadImage } from './canvas';
 import { MINIFY_SCALE, MINIFY_SCALE_SYMBOL, TILE_SIZE, MAX_OVERLAY_DIM } from './constants';
-import { imageDecodeCache, overlayCache, tooLargeOverlays, paletteDetectionCache, baseMinifyCache, clearOverlayCache } from './cache';
+import { imageDecodeCache, overlayCache, tooLargeOverlays, paletteDetectionCache, baseMinifyCache, clearOverlayCache, overlayImageDataCache } from './cache';
 import { showToast } from './toast';
 import { config, saveConfig, type OverlayItem } from './store';
 import { WPLACE_FREE, WPLACE_PAID, SYMBOL_TILES, SYMBOL_W, SYMBOL_H } from './palette';
@@ -152,6 +152,22 @@ export function overlaySignature(ov: {
   return [imgKey, ov.pixelUrl || 'null', ov.offsetX, ov.offsetY, ov.opacity, perfectFlag].join('|');
 }
 
+// Add cache for overlay ImageData
+// Only change: get overlay ImageData once per overlay
+async function getCachedOverlayImageData(img: HTMLImageElement, overlayId: string): Promise<ImageData> {
+  const cacheKey = `${overlayId}:${img.width}x${img.height}`;
+  const cached = overlayImageDataCache.get(cacheKey);
+  if (cached) return cached;
+
+  const canvas = createCanvas(img.width, img.height) as any;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) throw new Error('Failed to get 2D context');
+  ctx.drawImage(img, 0, 0);
+  const imageData = ctx.getImageData(0, 0, img.width, img.height);
+  overlayImageDataCache.set(cacheKey, imageData);
+  return imageData;
+}
+
 export async function buildOverlayDataForChunkUnified(
   ov: {
     id: string, name: string, enabled: boolean,
@@ -222,6 +238,7 @@ export async function buildOverlayDataForChunkUnified(
     return result;
   } else {
     if (config.minifyStyle === 'symbols') {
+      // Use cached ImageData instead of reading every time
       const scale = MINIFY_SCALE_SYMBOL;
       const tileW = TILE_SIZE * scale;
       const tileH = TILE_SIZE * scale;
@@ -233,13 +250,8 @@ export async function buildOverlayDataForChunkUnified(
       const isect = rectIntersect(0, 0, tileW, tileH, drawXScaled, drawYScaled, wScaled, hScaled);
       if (isect.w === 0 || isect.h === 0) { overlayCache.set(cacheKey, null); return null; }
 
-      // Get original image data once
-      const sourceCanvas = createCanvas(wImg, hImg) as any;
-      const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true });
-      if (!sourceCtx) throw new Error('Failed to get 2D context');
-      sourceCtx.imageSmoothingEnabled = false;
-      sourceCtx.drawImage(img as any, 0, 0);
-      const originalImageData = sourceCtx.getImageData(0, 0, wImg, hImg);
+      // Get cached ImageData instead of reading every time
+      const originalImageData = await getCachedOverlayImageData(img, ov.id);
       const srcData = originalImageData.data;
 
       // Create output canvas for just the intersection area
